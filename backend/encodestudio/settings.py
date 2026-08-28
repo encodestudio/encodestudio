@@ -35,6 +35,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -94,6 +95,12 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -121,6 +128,10 @@ CORS_ALLOWED_ORIGINS = [
     o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if o.strip()
 ]
 
+# Needed for Django admin / any cookie-based POST (login, etc.) to work behind
+# a custom domain — must include scheme, e.g. "https://encodestudio.in".
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()]
+
 
 # Email — defaults to printing to the console so nothing is ever sent
 # accidentally without real SMTP credentials configured in .env.
@@ -141,3 +152,16 @@ ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "shivam@encodestudio.in")
 ADMIN_EMAIL_CC = [e.strip() for e in os.getenv("ADMIN_EMAIL_CC", "encodestudio.in@gmail.com").split(",") if e.strip()]
 
 FRONTEND_ADMIN_URL = os.getenv("FRONTEND_ADMIN_URL", "http://localhost:8000/admin/contact/lead/")
+
+
+# Production hardening — App Runner (and most PaaS load balancers) terminate
+# TLS in front of the app and forward plain HTTP with this header, so Django
+# needs to be told how to recognise an already-secure request.
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = os.getenv("SECURE_SSL_REDIRECT", "True") == "True"
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 30  # 30 days
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
