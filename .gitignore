@@ -1,0 +1,7 @@
+# OS / editor cruft
+desktop.ini
+.DS_Store
+Thumbs.db
+
+# Claude Code local dev tooling (session-specific, not needed by other contributors)
+.claude/
