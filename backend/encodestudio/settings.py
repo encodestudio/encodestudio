@@ -157,9 +157,17 @@ FRONTEND_ADMIN_URL = os.getenv("FRONTEND_ADMIN_URL", "http://localhost:8000/admi
 # Production hardening — App Runner (and most PaaS load balancers) terminate
 # TLS in front of the app and forward plain HTTP with this header, so Django
 # needs to be told how to recognise an already-secure request.
+#
+# SECURE_SSL_REDIRECT defaults to False: App Runner's own edge already
+# enforces HTTPS for all public traffic (there's no way to reach it over
+# plain HTTP externally), and its internal health checker calls the
+# container directly over plain HTTP without a X-Forwarded-Proto header —
+# if Django redirects that to https, the health check never returns 200 and
+# the deployment hangs forever. Only enable this if you have a specific
+# reason Django itself needs to enforce it.
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-    SECURE_SSL_REDIRECT = os.getenv("SECURE_SSL_REDIRECT", "True") == "True"
+    SECURE_SSL_REDIRECT = os.getenv("SECURE_SSL_REDIRECT", "False") == "True"
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 60 * 60 * 24 * 30  # 30 days
