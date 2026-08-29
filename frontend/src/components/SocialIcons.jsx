@@ -29,6 +29,14 @@ export function InstagramIcon(props) {
   );
 }
 
+export function FacebookIcon(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M14.5 21V13.5H17L17.5 10.5H14.5V8.5C14.5 7.6 14.75 7 16.05 7H17.6V4.3C17.33 4.26 16.4 4.18 15.32 4.18C13.06 4.18 11.5 5.56 11.5 8.1V10.5H9V13.5H11.5V21H14.5Z" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function XIcon(props) {
   return (
     <svg {...common} {...props}>

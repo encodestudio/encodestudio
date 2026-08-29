@@ -1,7 +1,13 @@
 import { Link } from "react-router-dom";
 import { ArrowUpRight } from "lucide-react";
 import Logo from "./Logo.jsx";
-import { LinkedInIcon, InstagramIcon, XIcon } from "./SocialIcons.jsx";
+import { FacebookIcon, InstagramIcon, LinkedInIcon } from "./SocialIcons.jsx";
+
+const socialLinks = [
+  { label: "Facebook", href: "https://www.facebook.com/encodestudio.in", Icon: FacebookIcon },
+  { label: "Instagram", href: "https://www.instagram.com/encodestudio.in/", Icon: InstagramIcon },
+  { label: "LinkedIn", href: "https://www.linkedin.com/company/encode-studio-india/", Icon: LinkedInIcon },
+];
 
 const columns = [
   {
@@ -47,12 +53,14 @@ export default function Footer() {
               operate digital products that solve real-world problems.
             </p>
             <div className="mt-6 flex items-center gap-3">
-              {[LinkedInIcon, InstagramIcon, XIcon].map((Icon, i) => (
+              {socialLinks.map(({ label, href, Icon }) => (
                 <a
-                  key={i}
-                  href="#"
+                  key={label}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="flex h-9 w-9 items-center justify-center rounded-full border border-encode-border text-black/70 transition-colors hover:border-encode-blue hover:text-encode-blue"
-                  aria-label="Social link"
+                  aria-label={label}
                 >
                   <Icon size={15} />
                 </a>
