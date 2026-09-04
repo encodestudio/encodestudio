@@ -1,0 +1,14 @@
+{
+  "name": "encodestudio-contact-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cloudflare Worker that handles the encodestudio.in contact form",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^3.99.0"
+  }
+}

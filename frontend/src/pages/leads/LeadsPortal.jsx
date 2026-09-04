@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import LoginForm from "./LoginForm.jsx";
 import Dashboard from "./Dashboard.jsx";
+import Seo from "../../components/Seo.jsx";
 import { isLoggedIn, fetchMe, clearTokens } from "../../lib/leadsApi.js";
 
 export default function LeadsPortal() {
@@ -18,17 +19,30 @@ export default function LeadsPortal() {
       .finally(() => setChecking(false));
   }, []);
 
+  const seo = <Seo title="Lead Portal" path="/leads" noindex />;
+
   if (checking) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-encode-soft text-sm text-encode-grey">
+        {seo}
         Loading...
       </div>
     );
   }
 
   if (!user) {
-    return <LoginForm onSuccess={setUser} />;
+    return (
+      <>
+        {seo}
+        <LoginForm onSuccess={setUser} />
+      </>
+    );
   }
 
-  return <Dashboard user={user} onLoggedOut={() => setUser(null)} />;
+  return (
+    <>
+      {seo}
+      <Dashboard user={user} onLoggedOut={() => setUser(null)} />
+    </>
+  );
 }

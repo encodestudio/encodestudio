@@ -2,7 +2,9 @@ import { Link } from "react-router-dom";
 import { ArrowRight, Building2, Users, Workflow, Database, ShieldCheck, LineChart } from "lucide-react";
 import SectionLabel from "../components/SectionLabel.jsx";
 import Reveal from "../components/Reveal.jsx";
+import Seo from "../components/Seo.jsx";
 import { products } from "../lib/content.js";
+import { schemaGraph, breadcrumbList, organizationRef } from "../lib/seo.js";
 import campusLogo from "../assets/encode-campus-logo.png";
 
 const campus = products.find((p) => p.slug === "encode-campus");
@@ -19,8 +21,31 @@ const sections = [
 const architecture = ["Encode Studio Platform", "Education Core", "Institution", "Modules", "Users / Data / Workflows / Governance"];
 
 export default function ProductCampus() {
+  const schema = schemaGraph([
+    breadcrumbList([
+      { name: "Home", path: "/" },
+      { name: "Products", path: "/products" },
+      { name: "Encode Campus", path: "/products/encode-campus" },
+    ]),
+    {
+      "@type": "SoftwareApplication",
+      name: "Encode Campus",
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      url: "https://encodestudio.in/products/encode-campus",
+      description: campus.description,
+      publisher: organizationRef(),
+    },
+  ]);
+
   return (
     <div>
+      <Seo
+        title="Encode Campus — Education Operating & Governance Platform"
+        description={campus.description}
+        path="/products/encode-campus"
+        schema={schema}
+      />
       {/* HERO — BLACK */}
       <section className="bg-black py-24 md:py-32">
         <div className="container-page">

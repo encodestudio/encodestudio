@@ -21,13 +21,13 @@ const columns = [
   {
     title: "Services",
     links: [
-      { label: "Product Strategy", to: "/services#strategy" },
-      { label: "Design", to: "/services#design" },
-      { label: "Web & Mobile", to: "/services#web" },
-      { label: "Software Engineering", to: "/services#engineering" },
-      { label: "AI & Automation", to: "/services#ai" },
-      { label: "Cloud & DevOps", to: "/services#cloud" },
-      { label: "Product Growth", to: "/services#growth" },
+      { label: "Web Development", to: "/services/web-development" },
+      { label: "Website Development", to: "/services/website-development" },
+      { label: "Software Development", to: "/services/software-development" },
+      { label: "Mobile App Development", to: "/services/mobile-app-development" },
+      { label: "UI/UX Design", to: "/services/ui-ux-design" },
+      { label: "Digital Product Development", to: "/services/digital-product-development" },
+      { label: "All Services", to: "/services" },
     ],
   },
   {
@@ -49,9 +49,13 @@ export default function Footer() {
               <Logo className="h-8 w-auto" />
             </Link>
             <p className="mt-5 max-w-xs text-sm leading-relaxed text-encode-grey">
-              A product studio building technology for the real world. We design, build and
-              operate digital products that solve real-world problems.
+              A technology and product studio based in Delhi NCR, India. We design, build and
+              evolve web, software and AI products that solve real-world problems.
             </p>
+            <address className="mt-4 text-xs not-italic text-encode-grey">
+              Delhi NCR · India — serving clients across Noida, Greater Noida, Gurugram, Delhi
+              and India.
+            </address>
             <div className="mt-6 flex items-center gap-3">
               {socialLinks.map(({ label, href, Icon }) => (
                 <a

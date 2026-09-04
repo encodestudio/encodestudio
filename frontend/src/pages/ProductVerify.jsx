@@ -2,14 +2,39 @@ import { Link } from "react-router-dom";
 import { ArrowRight, ShieldCheck, CheckCircle2 } from "lucide-react";
 import SectionLabel from "../components/SectionLabel.jsx";
 import Reveal from "../components/Reveal.jsx";
+import Seo from "../components/Seo.jsx";
 import { products } from "../lib/content.js";
+import { schemaGraph, breadcrumbList, organizationRef } from "../lib/seo.js";
 import verifyLogo from "../assets/encode-verify-logo.png";
 
 const verify = products.find((p) => p.slug === "encode-verify");
 
 export default function ProductVerify() {
+  const schema = schemaGraph([
+    breadcrumbList([
+      { name: "Home", path: "/" },
+      { name: "Products", path: "/products" },
+      { name: "Encode Verify", path: "/products/encode-verify" },
+    ]),
+    {
+      "@type": "SoftwareApplication",
+      name: "Encode Verify",
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      url: "https://encodestudio.in/products/encode-verify",
+      description: verify.description,
+      publisher: organizationRef(),
+    },
+  ]);
+
   return (
     <div>
+      <Seo
+        title="Encode Verify — Verification & Trust Platform"
+        description={verify.description}
+        path="/products/encode-verify"
+        schema={schema}
+      />
       {/* HERO — NEAR BLACK, SECURITY-ORIENTED */}
       <section className="bg-encode-near py-24 md:py-32">
         <div className="container-page grid gap-14 lg:grid-cols-2 lg:items-center">

@@ -2,14 +2,39 @@ import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import SectionLabel from "../components/SectionLabel.jsx";
 import Reveal from "../components/Reveal.jsx";
+import Seo from "../components/Seo.jsx";
 import { products } from "../lib/content.js";
+import { schemaGraph, breadcrumbList, organizationRef } from "../lib/seo.js";
 import learnLogo from "../assets/encode-learn-logo.png";
 
 const learn = products.find((p) => p.slug === "encode-learn");
 
 export default function ProductLearn() {
+  const schema = schemaGraph([
+    breadcrumbList([
+      { name: "Home", path: "/" },
+      { name: "Products", path: "/products" },
+      { name: "Encode Learn", path: "/products/encode-learn" },
+    ]),
+    {
+      "@type": "SoftwareApplication",
+      name: "Encode Learn",
+      applicationCategory: "EducationalApplication",
+      operatingSystem: "Web",
+      url: "https://encodestudio.in/products/encode-learn",
+      description: learn.description,
+      publisher: organizationRef(),
+    },
+  ]);
+
   return (
     <div>
+      <Seo
+        title="Encode Learn — Learning & Knowledge Platform"
+        description={learn.description}
+        path="/products/encode-learn"
+        schema={schema}
+      />
       {/* HERO — BLUE */}
       <section className="bg-encode-blue py-24 md:py-32">
         <div className="container-page">

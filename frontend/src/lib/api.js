@@ -1,7 +1,10 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+// The contact form posts to a standalone Cloudflare Worker (see /worker).
+// Override per environment with VITE_CONTACT_ENDPOINT.
+const CONTACT_ENDPOINT =
+  import.meta.env.VITE_CONTACT_ENDPOINT || "http://localhost:8787";
 
 export async function submitContactForm(payload) {
-  const res = await fetch(`${API_BASE}/contact/`, {
+  const res = await fetch(CONTACT_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

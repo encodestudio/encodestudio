@@ -2,6 +2,8 @@ import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import SectionLabel from "../components/SectionLabel.jsx";
 import Reveal from "../components/Reveal.jsx";
+import Seo from "../components/Seo.jsx";
+import { schemaGraph, breadcrumbList, organizationRef, SITE_URL } from "../lib/seo.js";
 import founderPhoto from "../assets/founder-shivam.jpg";
 
 const emphasis = [
@@ -24,8 +26,35 @@ const beliefs = [
 const lookingAhead = ["Building products.", "Building partnerships.", "Building better systems.", "Building technology that can create lasting impact."];
 
 export default function Founder() {
+  const schema = schemaGraph([
+    breadcrumbList([
+      { name: "Home", path: "/" },
+      { name: "Meet the Founder", path: "/founder" },
+    ]),
+    {
+      "@type": "AboutPage",
+      url: `${SITE_URL}/founder`,
+      name: "Meet the Founder — Encode Studio",
+      mainEntity: {
+        "@type": "Person",
+        name: "Shivam",
+        jobTitle: "Founder",
+        worksFor: organizationRef(),
+        description:
+          "Founder of Encode Studio, a technology and product studio in Delhi NCR, India.",
+      },
+    },
+  ]);
+
   return (
     <div>
+      <Seo
+        title="Meet the Founder — Shivam, Founder of Encode Studio"
+        description="The story behind Encode Studio — a technology and product studio in Delhi NCR, India — and the vision for Encode Campus, told by founder Shivam."
+        path="/founder"
+        type="profile"
+        schema={schema}
+      />
       {/* HERO */}
       <section className="grid-bg py-24 md:py-28">
         <div className="container-page grid gap-14 lg:grid-cols-[320px,1fr] lg:items-center">

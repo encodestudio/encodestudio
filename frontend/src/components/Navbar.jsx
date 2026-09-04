@@ -5,22 +5,33 @@ import { ChevronDown, Menu, X } from "lucide-react";
 import Logo from "./Logo.jsx";
 
 const productLinks = [
+  { to: "/products", label: "All Products", desc: "The Encode Studio product ecosystem" },
   { to: "/products/encode-campus", label: "Encode Campus", desc: "Education Operating & Governance Platform" },
   { to: "/products/encode-learn", label: "Encode Learn", desc: "Learning & Knowledge Platform" },
   { to: "/products/encode-verify", label: "Encode Verify", desc: "Verification & Trust Platform" },
 ];
 
+const serviceLinks = [
+  { to: "/services", label: "All Services", desc: "Overview of everything we do" },
+  { to: "/services/web-development", label: "Web Development", desc: "Web apps, SaaS platforms & portals" },
+  { to: "/services/website-development", label: "Website Development", desc: "Fast, SEO-ready corporate & marketing sites" },
+  { to: "/services/software-development", label: "Software Development", desc: "Custom software & product engineering" },
+  { to: "/services/mobile-app-development", label: "Mobile App Development", desc: "Android, iOS & cross-platform apps" },
+  { to: "/services/ui-ux-design", label: "UI/UX Design", desc: "Research, UI design & design systems" },
+  { to: "/services/digital-product-development", label: "Digital Product Development", desc: "Strategy to launch, under one roof" },
+];
+
 const navItems = [
   { to: "/", label: "Home" },
   { to: "/products", label: "Products", dropdown: productLinks },
-  { to: "/services", label: "Services" },
+  { to: "/services", label: "Services", dropdown: serviceLinks },
   { to: "/founder", label: "Meet the Founder" },
 ];
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
-  const [productsOpen, setProductsOpen] = useState(false);
+  const [openMenu, setOpenMenu] = useState(null);
   const location = useLocation();
 
   useEffect(() => {
@@ -50,15 +61,18 @@ export default function Navbar() {
               <div
                 key={item.to}
                 className="relative"
-                onMouseEnter={() => setProductsOpen(true)}
-                onMouseLeave={() => setProductsOpen(false)}
+                onMouseEnter={() => setOpenMenu(item.to)}
+                onMouseLeave={() => setOpenMenu((cur) => (cur === item.to ? null : cur))}
               >
-                <button className="flex items-center gap-1 rounded-full px-4 py-2 text-sm font-medium text-black/80 transition-colors hover:bg-encode-soft hover:text-black">
+                <NavLink
+                  to={item.to}
+                  className="flex items-center gap-1 rounded-full px-4 py-2 text-sm font-medium text-black/80 transition-colors hover:bg-encode-soft hover:text-black"
+                >
                   {item.label}
-                  <ChevronDown size={14} className={`transition-transform ${productsOpen ? "rotate-180" : ""}`} />
-                </button>
+                  <ChevronDown size={14} className={`transition-transform ${openMenu === item.to ? "rotate-180" : ""}`} />
+                </NavLink>
                 <AnimatePresence>
-                  {productsOpen && (
+                  {openMenu === item.to && (
                     <motion.div
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -131,10 +145,13 @@ export default function Navbar() {
                   {p.label}
                 </Link>
               ))}
-              <Link to="/services" className="rounded-xl px-3 py-3 text-base font-medium hover:bg-encode-soft">
-                Services
-              </Link>
-              <Link to="/founder" className="rounded-xl px-3 py-3 text-base font-medium hover:bg-encode-soft">
+              <div className="px-3 pt-2 label">Services</div>
+              {serviceLinks.map((s) => (
+                <Link key={s.to} to={s.to} className="rounded-xl px-3 py-3 text-base font-medium hover:bg-encode-soft">
+                  {s.label}
+                </Link>
+              ))}
+              <Link to="/founder" className="mt-2 rounded-xl px-3 py-3 text-base font-medium hover:bg-encode-soft">
                 Meet the Founder
               </Link>
               <Link to="/contact" className="rounded-xl px-3 py-3 text-base font-medium hover:bg-encode-soft">

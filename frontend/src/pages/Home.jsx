@@ -4,7 +4,9 @@ import SectionLabel from "../components/SectionLabel.jsx";
 import EcosystemGraphic from "../components/EcosystemGraphic.jsx";
 import EMotif from "../components/EMotif.jsx";
 import Reveal from "../components/Reveal.jsx";
+import Seo from "../components/Seo.jsx";
 import { products, serviceGroups, process, differentiators } from "../lib/content.js";
+import { schemaGraph, organizationRef, absoluteUrl } from "../lib/seo.js";
 import campusLogo from "../assets/encode-campus-logo.png";
 import learnLogo from "../assets/encode-learn-logo.png";
 import verifyLogo from "../assets/encode-verify-logo.png";
@@ -22,8 +24,23 @@ const themeStyles = {
 };
 
 export default function Home() {
+  const schema = schemaGraph([
+    {
+      "@type": "WebPage",
+      "@id": `${absoluteUrl("/")}#webpage`,
+      url: absoluteUrl("/"),
+      name: "Encode Studio — Web & Software Development Studio in Delhi NCR, India",
+      isPartOf: { "@id": "https://encodestudio.in/#website" },
+      about: organizationRef(),
+      description:
+        "Encode Studio is a technology and product studio in Delhi NCR, India, building web applications, custom software, mobile apps and AI-powered digital products.",
+    },
+  ]);
+
   return (
     <div>
+      <Seo path="/" schema={schema} />
+
       {/* HERO */}
       <section className="relative overflow-hidden grid-bg">
         <div className="container-page grid gap-16 pb-24 pt-20 lg:grid-cols-2 lg:items-center lg:pt-28">
@@ -40,9 +57,10 @@ export default function Home() {
             </Reveal>
             <Reveal delay={0.15}>
               <p className="mt-6 max-w-lg text-lg leading-relaxed text-encode-grey">
-                Strategy. Design. Technology. Intelligence. Encode Studio builds scalable digital
-                products for businesses and institutions — and partners with organisations to
-                transform ideas into production-ready technology.
+                Encode Studio is a technology and product studio in Delhi NCR, India. We design and
+                build scalable web applications, custom software and AI-powered digital products for
+                businesses and institutions — and partner with organisations across India to turn
+                ideas into production-ready technology.
               </p>
             </Reveal>
             <Reveal delay={0.25}>

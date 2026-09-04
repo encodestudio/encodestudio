@@ -2,8 +2,10 @@ import { useState } from "react";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 import SectionLabel from "../components/SectionLabel.jsx";
 import Reveal from "../components/Reveal.jsx";
+import Seo from "../components/Seo.jsx";
 import { interestOptions } from "../lib/content.js";
 import { submitContactForm } from "../lib/api.js";
+import { schemaGraph, breadcrumbList, organizationRef, SITE_URL } from "../lib/seo.js";
 
 const initialState = {
   name: "",
@@ -14,6 +16,7 @@ const initialState = {
   project_description: "",
   timeline: "",
   message: "",
+  website: "", // honeypot — must stay empty
 };
 
 export default function Contact() {
@@ -37,8 +40,27 @@ export default function Contact() {
     }
   };
 
+  const schema = schemaGraph([
+    breadcrumbList([
+      { name: "Home", path: "/" },
+      { name: "Contact", path: "/contact" },
+    ]),
+    {
+      "@type": "ContactPage",
+      url: `${SITE_URL}/contact`,
+      name: "Contact Encode Studio",
+      about: organizationRef(),
+    },
+  ]);
+
   return (
     <div>
+      <Seo
+        title="Contact Encode Studio — Start a Project"
+        description="Tell Encode Studio about your web, software, mobile or digital product project. A technology and product studio in Delhi NCR, India, working with clients across India."
+        path="/contact"
+        schema={schema}
+      />
       <section className="grid-bg py-24 md:py-28">
         <div className="container-page">
           <Reveal>
@@ -78,6 +100,17 @@ export default function Contact() {
               </Reveal>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Honeypot: hidden from real users; bots that fill it are dropped. */}
+                <input
+                  type="text"
+                  name="website"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  aria-hidden="true"
+                  className="hidden"
+                  value={form.website}
+                  onChange={update("website")}
+                />
                 <div className="grid gap-6 sm:grid-cols-2">
                   <Field label="Name" required>
                     <input

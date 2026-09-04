@@ -8,6 +8,7 @@ import ProductCampus from "./pages/ProductCampus.jsx";
 import ProductLearn from "./pages/ProductLearn.jsx";
 import ProductVerify from "./pages/ProductVerify.jsx";
 import Services from "./pages/Services.jsx";
+import ServiceDetail from "./pages/ServiceDetail.jsx";
 import Founder from "./pages/Founder.jsx";
 import Contact from "./pages/Contact.jsx";
 import NotFound from "./pages/NotFound.jsx";
@@ -33,6 +34,7 @@ function PublicSite() {
           <Route path="/products/encode-learn" element={<ProductLearn />} />
           <Route path="/products/encode-verify" element={<ProductVerify />} />
           <Route path="/services" element={<Services />} />
+          <Route path="/services/:slug" element={<ServiceDetail />} />
           <Route path="/founder" element={<Founder />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="*" element={<NotFound />} />

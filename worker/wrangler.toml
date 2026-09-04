@@ -1,0 +1,16 @@
+name = "encodestudio-contact"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+workers_dev = true
+
+# After first deploy you can bind a custom domain instead of the *.workers.dev URL:
+#   routes = [{ pattern = "contact.encodestudio.in", custom_domain = true }]
+
+[vars]
+MAIL_FROM = "Encode Studio <leads@encodestudio.in>"
+MAIL_TO = "shivam@encodestudio.in"
+SEND_CONFIRMATION = "false"
+
+# Secrets — do NOT put these here. Set them with:
+#   npx wrangler secret put RESEND_API_KEY
+#   npx wrangler secret put TURNSTILE_SECRET   # optional

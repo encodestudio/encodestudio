@@ -2,8 +2,10 @@ import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import SectionLabel from "../components/SectionLabel.jsx";
 import Reveal from "../components/Reveal.jsx";
+import Seo from "../components/Seo.jsx";
 import EcosystemGraphic from "../components/EcosystemGraphic.jsx";
 import { products } from "../lib/content.js";
+import { schemaGraph, breadcrumbList } from "../lib/seo.js";
 import campusLogo from "../assets/encode-campus-logo.png";
 import learnLogo from "../assets/encode-learn-logo.png";
 import verifyLogo from "../assets/encode-verify-logo.png";
@@ -21,8 +23,31 @@ const logoMap = {
 };
 
 export default function Products() {
+  const schema = schemaGraph([
+    breadcrumbList([
+      { name: "Home", path: "/" },
+      { name: "Products", path: "/products" },
+    ]),
+    {
+      "@type": "ItemList",
+      name: "Encode Studio Products",
+      itemListElement: products.map((p, i) => ({
+        "@type": "ListItem",
+        position: i + 1,
+        name: p.name,
+        url: `https://encodestudio.in/products/${p.slug}`,
+      })),
+    },
+  ]);
+
   return (
     <div>
+      <Seo
+        title="Products — Encode Campus, Encode Learn & Encode Verify"
+        description="Digital products built and owned by Encode Studio: Encode Campus (education operating & governance platform), Encode Learn (learning platform) and Encode Verify (verification & trust platform)."
+        path="/products"
+        schema={schema}
+      />
       <section className="grid-bg py-24 md:py-28">
         <div className="container-page">
           <Reveal>
