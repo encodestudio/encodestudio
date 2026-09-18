@@ -74,9 +74,19 @@ export default function ProductCampus() {
             </p>
           </Reveal>
           <Reveal delay={0.25}>
-            <Link to="/contact" className="btn-primary-inverse mt-9">
-              Explore Encode Campus <ArrowRight size={16} />
-            </Link>
+            <div className="mt-9 flex flex-wrap items-center gap-4">
+              <Link to="/contact" className="btn-primary-inverse">
+                Explore Encode Campus <ArrowRight size={16} />
+              </Link>
+              <a
+                href="https://encodecampus.encodestudio.in"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-semibold text-white/70 underline underline-offset-4 hover:text-white"
+              >
+                Visit the official Encode Campus website
+              </a>
+            </div>
           </Reveal>
         </div>
       </section>
@@ -169,6 +179,14 @@ export default function ProductCampus() {
               Ready to bring Encode Campus to your institution?
             </h3>
             <p className="mt-2 text-encode-grey">Let's talk about your operations, data and governance needs.</p>
+            <a
+              href="https://encodecampus.encodestudio.in"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-block text-sm font-semibold text-encode-blue underline underline-offset-4 hover:text-encode-blue/80"
+            >
+              encodecampus.encodestudio.in
+            </a>
           </div>
           <Link to="/contact" className="btn-primary shrink-0">
             Start a Project <ArrowRight size={16} />
