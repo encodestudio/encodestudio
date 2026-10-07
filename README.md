@@ -35,10 +35,19 @@ pages · Meet the Founder · Contact. Per-route SEO meta and schema come from
 
 - `/contact` posts to `POST /api/contact/`. It validates the input, has a honeypot and a
   rate limit, stores the lead in MySQL, and emails both the visitor and the team.
-- `/leads` is a staff-only portal (JWT login). It is not linked from the site. Staff can
-  change a lead's status (New → Contacted → Qualified → Converted / Lost), add internal
-  notes, search and filter, and see or resend emails. Links in notification emails open
-  the lead directly (`/leads?lead=<id>`).
+- `/leads` is a staff-only CRM (JWT login, not linked from the site, loaded only when visited):
+  - **Dashboard**: KPIs with period-over-period change, leads-over-time trend, conversion funnel,
+    breakdowns by stage, source, interest and priority, an arrival heatmap, team performance,
+    "going cold" and "unassigned" lists, and a live activity feed. Date range runs from 7 days to all time.
+  - **Leads**: search, filters, saved views (My leads, Hot, Overdue...), sortable columns,
+    bulk stage/owner/priority/tag/delete, CSV export.
+  - **Pipeline**: Kanban board with drag-and-drop between stages and lost reasons.
+  - **Lead page**: stage stepper, owner, priority, deal value, tags, lead score, a full
+    activity timeline (notes, calls, emails, meetings, plus every change), follow-ups, source
+    tracking (UTM, referrer, landing page), email delivery and resend, and duplicate detection.
+  - **Follow-ups**: overdue, today and upcoming tasks, with a badge in the sidebar.
+  - **Team**: admins add, edit and deactivate staff; everyone can change their own password.
+  - Phone and walk-in leads can be added by hand. Notification emails link straight to the lead.
 
 ## Production build & deploy
 

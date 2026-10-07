@@ -5,6 +5,7 @@ import Reveal from "../components/Reveal.jsx";
 import Seo from "../components/Seo.jsx";
 import { interestOptions } from "../lib/content.js";
 import { submitContactForm } from "../lib/api.js";
+import { getAttribution } from "../lib/attribution.js";
 import { schemaGraph, breadcrumbList, organizationRef, SITE_URL } from "../lib/seo.js";
 
 const initialState = {
@@ -31,7 +32,7 @@ export default function Contact() {
     setStatus("submitting");
     setError("");
     try {
-      await submitContactForm(form);
+      await submitContactForm({ ...form, ...getAttribution() });
       setStatus("success");
       setForm(initialState);
     } catch (err) {

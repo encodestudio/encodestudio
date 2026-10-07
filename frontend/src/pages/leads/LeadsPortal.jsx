@@ -1,8 +1,22 @@
 import { useEffect, useState } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import LoginForm from "./LoginForm.jsx";
-import Dashboard from "./Dashboard.jsx";
+import PortalLayout from "./PortalLayout.jsx";
+import AnalyticsPage from "./AnalyticsPage.jsx";
+import LeadsListPage from "./LeadsListPage.jsx";
+import PipelinePage from "./PipelinePage.jsx";
+import LeadPage from "./LeadPage.jsx";
+import TasksPage from "./TasksPage.jsx";
+import TeamPage from "./TeamPage.jsx";
 import Seo from "../../components/Seo.jsx";
 import { isLoggedIn, fetchMe, clearTokens } from "../../lib/leadsApi.js";
+
+/** Old notification emails link to /leads?lead=<id>; send them to the lead page. */
+function DashboardOrLegacyLead() {
+  const { search } = useLocation();
+  const leadId = new URLSearchParams(search).get("lead");
+  return leadId ? <Navigate to={`/leads/lead/${leadId}`} replace /> : <AnalyticsPage />;
+}
 
 export default function LeadsPortal() {
   const [checking, setChecking] = useState(true);
@@ -19,7 +33,7 @@ export default function LeadsPortal() {
       .finally(() => setChecking(false));
   }, []);
 
-  const seo = <Seo title="Lead Portal" path="/leads" noindex />;
+  const seo = <Seo title="Lead Manager" path="/leads" noindex />;
 
   if (checking) {
     return (
@@ -42,7 +56,17 @@ export default function LeadsPortal() {
   return (
     <>
       {seo}
-      <Dashboard user={user} onLoggedOut={() => setUser(null)} />
+      <PortalLayout user={user} onLoggedOut={() => setUser(null)}>
+        <Routes>
+          <Route index element={<DashboardOrLegacyLead />} />
+          <Route path="list" element={<LeadsListPage />} />
+          <Route path="pipeline" element={<PipelinePage />} />
+          <Route path="tasks" element={<TasksPage />} />
+          <Route path="team" element={<TeamPage />} />
+          <Route path="lead/:id" element={<LeadPage />} />
+          <Route path="*" element={<Navigate to="/leads" replace />} />
+        </Routes>
+      </PortalLayout>
     </>
   );
 }

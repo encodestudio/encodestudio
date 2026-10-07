@@ -1,19 +1,11 @@
-// Creates the tables if they don't exist yet. Never alters or drops anything.
-import fs from "node:fs/promises";
-import path from "node:path";
-import { ROOT_DIR } from "../src/config.js";
+// Creates missing tables/columns. Never drops or rewrites existing data.
+// (The server also runs this automatically on start.)
 import { pool } from "../src/db.js";
-
-const sql = await fs.readFile(path.join(ROOT_DIR, "schema.sql"), "utf8");
-const statements = sql
-  .replace(/^\s*--.*$/gm, "")
-  .split(";")
-  .map((s) => s.trim())
-  .filter(Boolean);
+import { migrate } from "../src/migrate.js";
 
 try {
-  for (const statement of statements) await pool.query(statement);
-  console.log("Schema is up to date.");
+  const applied = await migrate();
+  console.log(applied.length ? `Applied: ${applied.join(", ")}` : "Schema is up to date.");
 } finally {
   await pool.end();
 }

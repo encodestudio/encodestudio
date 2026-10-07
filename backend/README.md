@@ -15,7 +15,7 @@ migration. The DB is configured with the same `DB_*` variables as before.
 cd backend
 npm install
 cp .env.example .env      # skip if you already have backend/.env — it works as-is
-npm run db:init           # creates the tables only if they don't exist yet
+npm run db:init           # applies schema migrations (the server also does this on start)
 npm run staff -- add <username> --name "First Last" --superuser
 npm run dev               # http://localhost:8000, restarts on file changes
 ```
@@ -34,19 +34,34 @@ In development run the frontend separately (`npm run dev` in `/frontend`); Vite 
 | `POST` | `/api/auth/login/` | public, 20/hour/IP | Staff login → `{access, refresh, user}` |
 | `POST` | `/api/auth/refresh/` | refresh token | New `{access, refresh}` (refresh tokens rotate) |
 | `GET` | `/api/auth/me/` | access token | Current user |
-| `GET` | `/api/leads/` | staff | List; `?page=`, `?search=`, `?status=`, `?interest=`, `?ordering=` |
-| `GET` | `/api/leads/stats/` | staff | Counts per status |
-| `GET` | `/api/leads/interests/` | staff | Distinct interests for the filter |
-| `GET` | `/api/leads/:id/` | staff | One lead |
-| `PATCH` | `/api/leads/:id/` | staff | Update `status` and/or `notes` only |
-| `DELETE` | `/api/leads/:id/` | staff | Delete a lead |
+| `GET` | `/api/leads/` | staff | List; `?page=&page_size=&search=&status=&source=&priority=&owner=me|none|<id>&interest=&tag=&created_from=&created_to=&stale=1&overdue=1&ordering=` |
+| `POST` | `/api/leads/` | staff | Add a lead manually (phone, referral, event...) |
+| `GET` | `/api/leads/board/` | staff | Pipeline columns with counts and value |
+| `GET` | `/api/leads/export.csv` | staff | CSV of every lead matching the list filters |
+| `POST` | `/api/leads/bulk/` | staff | `{ ids, action: status|owner|priority|add_tag|delete, value }` |
+| `GET` | `/api/leads/stats/`, `/interests/`, `/tags/` | staff | Counts and filter options |
+| `GET` / `PATCH` / `DELETE` | `/api/leads/:id/` | staff | Read, edit (every change is logged on the timeline), delete |
+| `GET` / `POST` | `/api/leads/:id/activities/` | staff | Timeline; log a note, call, email or meeting |
+| `GET` | `/api/leads/:id/related/` | staff | Other leads with the same email or phone |
 | `POST` | `/api/leads/:id/resend_emails/` | staff | Resend confirmation + admin emails |
+| `GET` / `POST` / `PATCH` / `DELETE` | `/api/tasks/` | staff | Follow-ups (`?scope=mine&state=open|done&lead=`), plus `/summary/` |
+| `GET` / `POST` / `PATCH` | `/api/users/` | staff / admin | Team members (admins add, edit, deactivate) |
+| `GET` | `/api/analytics/?from=&to=&tz=` | staff | KPIs, trend, funnel, breakdowns, heatmap, activity feed |
 | `GET` | `/health/` | public | Health check |
 
 Contact body: `{ name, company, email, phone, interest, project_description, timeline, message }`
 (`name`, `email`, `message` required) plus the hidden `website` honeypot — if a bot fills
 it, the API replies success but stores and sends nothing. Validation errors come back as
 `{ field: ["message"] }`, other errors as `{ detail }`.
+
+## Database migrations
+
+`src/migrate.js` holds ordered, run-once migrations, recorded in `app_migrations`. They
+only add tables, columns and indexes, never drop data. The server applies pending ones on
+start, so deploying new code is enough. `0002_crm` adds the CRM fields to `contact_lead`
+(owner, priority, deal value, tags, source + UTM, timestamps) and the `lead_activity` and
+`lead_task` tables. The DB user needs `ALTER`/`CREATE`/`INDEX` rights (`setup.sql`
+grants them).
 
 ## Lead-manager accounts
 

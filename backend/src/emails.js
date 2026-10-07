@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 import { config } from "./config.js";
-import { markEmailSent } from "./leads.js";
+import { logActivity, markEmailSent } from "./leads.js";
 
 const transport = config.email.useConsole
   ? nodemailer.createTransport({ jsonTransport: true })
@@ -164,6 +164,7 @@ export async function sendLeadConfirmationEmail(lead) {
       html: confirmationHtml(lead),
     });
     await markEmailSent(lead.id, "confirmation_email_sent_at");
+    await logActivity(lead.id, null, "email_sent", `Confirmation email sent to ${lead.email}`);
     return true;
   } catch (err) {
     console.error(`Failed to send lead confirmation email to ${lead.email} (lead #${lead.id})`, err);
@@ -195,6 +196,7 @@ export async function sendLeadAdminNotificationEmail(lead) {
       html: notificationHtml(lead, leadUrl),
     });
     await markEmailSent(lead.id, "admin_notification_sent_at");
+    await logActivity(lead.id, null, "email_sent", `Team notified at ${config.email.adminTo}`);
     return true;
   } catch (err) {
     console.error(`Failed to send admin notification email for lead #${lead.id}`, err);
