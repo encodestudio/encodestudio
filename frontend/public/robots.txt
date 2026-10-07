@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /leads
+Disallow: /leads/
+
+Sitemap: https://encodestudio.in/sitemap.xml

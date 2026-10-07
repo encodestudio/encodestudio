@@ -1,0 +1,16 @@
+{
+  "name": "encodestudio",
+  "private": true,
+  "description": "Encode Studio website — React frontend + Node.js/Express API + MySQL, deployed as one Node app",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "build": "npm install --prefix frontend --include=dev && npm run build --prefix frontend && npm install --prefix backend --omit=dev",
+    "start": "npm start --prefix backend",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "db:init": "npm run db:init --prefix backend",
+    "staff": "npm run staff --prefix backend --"
+  }
+}

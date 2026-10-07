@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-white text-black antialiased font-sans;
+  font-feature-settings: "ss01" on, "cv01" on;
+}
+
+::selection {
+  background: #38B6FF;
+  color: #000;
+}
+
+.label {
+  @apply text-xs font-semibold uppercase tracking-[0.18em] text-encode-grey;
+}
+
+.container-page {
+  @apply mx-auto max-w-content px-6 md:px-10;
+}
+
+.btn-primary {
+  @apply inline-flex items-center gap-2 rounded-full bg-black px-7 py-3.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-encode-blue hover:text-black;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center gap-2 rounded-full border border-black bg-white px-7 py-3.5 text-sm font-semibold text-black transition-colors duration-200 hover:bg-encode-blueTint;
+}
+
+.btn-primary-inverse {
+  @apply inline-flex items-center gap-2 rounded-full bg-encode-blue px-7 py-3.5 text-sm font-semibold text-black transition-colors duration-200 hover:bg-white;
+}
+
+.btn-secondary-inverse {
+  @apply inline-flex items-center gap-2 rounded-full border border-white/30 bg-transparent px-7 py-3.5 text-sm font-semibold text-white transition-colors duration-200 hover:border-white hover:bg-white/10;
+}
+
+.input {
+  @apply w-full rounded-xl border border-encode-border bg-white px-4 py-3 text-sm text-black outline-none transition-colors placeholder:text-encode-grey/70 focus:border-encode-blue;
+}
+
+.card-surface {
+  @apply rounded-3xl border border-encode-border bg-white transition-all duration-300;
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(to right, #EDEFF2 1px, transparent 1px),
+    linear-gradient(to bottom, #EDEFF2 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.animate-marquee {
+  animation: marquee 28s linear infinite;
+}
