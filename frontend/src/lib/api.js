@@ -1,7 +1,7 @@
-// The contact form posts to a standalone Cloudflare Worker (see /worker).
-// Override per environment with VITE_CONTACT_ENDPOINT.
-const CONTACT_ENDPOINT =
-  import.meta.env.VITE_CONTACT_ENDPOINT || "http://localhost:8787";
+// The contact form posts to the Node API, which is served from the same origin
+// as the site (Vite proxies /api to it in dev). Override with
+// VITE_CONTACT_ENDPOINT only if the API lives on a different domain.
+const CONTACT_ENDPOINT = import.meta.env.VITE_CONTACT_ENDPOINT || "/api/contact/";
 
 export async function submitContactForm(payload) {
   const res = await fetch(CONTACT_ENDPOINT, {

@@ -1,6 +1,5 @@
+node_modules/
+.env
+# Leftover from the Django backend — safe to delete.
 venv/
 __pycache__/
-*.pyc
-.env
-db.sqlite3
-staticfiles/

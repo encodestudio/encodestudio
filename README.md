@@ -1,52 +1,69 @@
 # Encode Studio Website
 
-Full-stack marketing website for Encode Studio — React (Vite) frontend, Django REST
-Framework backend, MySQL database.
+Marketing website for Encode Studio: a React frontend, a Node.js (Express) backend, and
+a MySQL database. In production it runs as **one Node app** that serves both the site and
+the API, so it fits on any low-cost Node host. No AWS needed.
 
 ```
 encodestudio/
 ├── frontend/   React + Vite + Tailwind CSS + Framer Motion
-└── backend/    Django + Django REST Framework + MySQL (via PyMySQL)
+├── backend/    Node.js + Express + MySQL (mysql2), Nodemailer
+└── package.json  root build/start scripts used by hosts
 ```
 
-## Quick start
-
-**Frontend**
+## Local development
 
 ```bash
-cd frontend
-npm install
-npm run dev
+# 1. API on :8000 (reads backend/.env — DB credentials as before)
+cd backend && npm install && npm run dev
+
+# 2. Site on :5173, proxies /api to :8000
+cd frontend && npm install && npm run dev
 ```
 
-Runs at `http://localhost:5173`.
-
-**Backend**
-
-See [`backend/README.md`](backend/README.md) for full setup (MySQL database creation,
-`.env`, migrations). Once configured:
-
-```bash
-cd backend
-./venv/Scripts/python manage.py runserver
-```
-
-Runs at `http://localhost:8000`. The frontend contact form posts to
-`http://localhost:8000/api/contact/` (configurable via `frontend/.env`).
+First time with an empty database: `npm run db:init` then
+`npm run staff -- add <username> --superuser` in `backend/`. See
+[`backend/README.md`](backend/README.md).
 
 ## Pages
 
-Home · Products (Encode Campus, Encode Learn, Encode Verify) · Services · Meet the
-Founder · Contact — following the site architecture and brand system defined in the
-Encode Studio branding and content documents.
+Home · Products (Encode Campus, Encode Learn, Encode Verify) · Services + per-service
+pages · Meet the Founder · Contact. Per-route SEO meta and schema come from
+`frontend/src/components/Seo.jsx`, and `robots.txt`/`sitemap.xml` from `frontend/public`.
 
-## Lead management portal
+## Contact form and lead manager
 
-`/leads` is a staff-only, JWT-authenticated dashboard for managing contact-form
-submissions — status workflow, notes, search/filters, and resend-email — separate from
-the public site (no nav/footer, not linked anywhere) and from the Django admin. See
-[`backend/README.md`](backend/README.md#lead-management) for how accounts are created
-and how the API works.
+- `/contact` posts to `POST /api/contact/`. It validates the input, has a honeypot and a
+  rate limit, stores the lead in MySQL, and emails both the visitor and the team.
+- `/leads` is a staff-only portal (JWT login). It is not linked from the site. Staff can
+  change a lead's status (New → Contacted → Qualified → Converted / Lost), add internal
+  notes, search and filter, and see or resend emails. Links in notification emails open
+  the lead directly (`/leads?lead=<id>`).
+
+## Production build & deploy
+
+From the repo root:
+
+```bash
+npm run build   # installs + builds frontend/dist, installs backend prod deps
+npm start       # node backend/src/server.js on $PORT
+```
+
+Set these on the host: `NODE_ENV=production`, `JWT_SECRET`, the `DB_*` variables,
+SMTP `EMAIL_*`, and `LEADS_PORTAL_URL=https://encodestudio.in/leads`. (If `backend/.env`
+is uploaded, it is read too. Real environment variables win.)
+
+Any host that runs `npm run build` + `npm start` works. Low-cost options:
+
+- **Shared/cloud hosting with Node.js + MySQL** (e.g. cPanel or hPanel "Node.js app"):
+  the cheapest all-in-one choice. MySQL runs on the same plan. Point the app's startup
+  file at `backend/src/server.js`.
+- **A small VPS** (Hetzner, DigitalOcean, Oracle Cloud's Always Free tier, …): run MySQL
+  and the app with `pm2` or systemd behind Caddy/nginx. Full control, flat monthly price.
+- **Render / Railway** for the Node app, plus a MySQL database hosted elsewhere
+  (`DB_SSL=True`). Render's free web tier sleeps when idle.
+
+Keep the domain on Cloudflare (DNS + free SSL/CDN) and point `encodestudio.in` at the host.
 
 ## Brand system
 

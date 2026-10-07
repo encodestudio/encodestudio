@@ -4,7 +4,7 @@ import { LogOut, Search, RefreshCw, ChevronLeft, ChevronRight } from "lucide-rea
 import Logo from "../../components/Logo.jsx";
 import StatusBadge, { STATUS_OPTIONS } from "./StatusBadge.jsx";
 import LeadDetailModal from "./LeadDetailModal.jsx";
-import { fetchLeads, fetchLeadStats, fetchInterests, logout } from "../../lib/leadsApi.js";
+import { fetchLead, fetchLeads, fetchLeadStats, fetchInterests, logout } from "../../lib/leadsApi.js";
 
 const STAT_CARDS = [
   { key: "total", label: "Total" },
@@ -58,6 +58,12 @@ export default function Dashboard({ user, onLoggedOut }) {
 
   useEffect(() => {
     fetchInterests().then(setInterests).catch(() => {});
+  }, []);
+
+  // "Open in Lead Manager" links in notification emails point at /leads?lead=<id>.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("lead");
+    if (id) fetchLead(id).then(setSelectedLead).catch(() => {});
   }, []);
 
   useEffect(() => {

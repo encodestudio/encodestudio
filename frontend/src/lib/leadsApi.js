@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+// Same-origin Node API by default (Vite proxies /api to it in dev).
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 
 const ACCESS_KEY = "encode_leads_access";
 const REFRESH_KEY = "encode_leads_refresh";
@@ -105,6 +106,12 @@ export async function fetchLeads(params = {}) {
     Object.fromEntries(Object.entries(params).filter(([, v]) => v !== "" && v != null))
   ).toString();
   const res = await authFetch(`/leads/${query ? `?${query}` : ""}`);
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
+
+export async function fetchLead(id) {
+  const res = await authFetch(`/leads/${id}/`);
   if (!res.ok) throw new Error(await parseError(res));
   return res.json();
 }

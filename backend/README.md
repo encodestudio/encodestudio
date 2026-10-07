@@ -1,125 +1,83 @@
-# Encode Studio — Backend (Django + DRF + MySQL)
+# Encode Studio — Backend (Node.js + Express + MySQL)
+
+One Node process that serves:
+
+- the JSON API under `/api` (contact form, lead-manager portal, auth), and
+- the built React app (`frontend/dist`) for every other URL, with client-side routing.
+
+It uses the **same MySQL database and tables** the old Django backend created
+(`contact_lead`, `auth_user`), so existing leads and staff logins carry over with no
+migration. The DB is configured with the same `DB_*` variables as before.
 
 ## Setup
 
-1. Create a virtual environment and install dependencies:
+```bash
+cd backend
+npm install
+cp .env.example .env      # skip if you already have backend/.env — it works as-is
+npm run db:init           # creates the tables only if they don't exist yet
+npm run staff -- add <username> --name "First Last" --superuser
+npm run dev               # http://localhost:8000, restarts on file changes
+```
 
-   ```bash
-   python -m venv venv
-   ./venv/Scripts/pip install -r requirements.txt
-   ```
+For a brand-new database, create it and the app user first with `setup.sql`
+(`mysql -u root -p < setup.sql`).
 
-2. Create the MySQL database and app user. Edit the password in `setup.sql`, then run:
-
-   ```bash
-   mysql -u root -p < setup.sql
-   ```
-
-3. Copy `.env.example` to `.env` and fill in the DB password you set above:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-4. Run migrations and start the server:
-
-   ```bash
-   ./venv/Scripts/python manage.py migrate
-   ./venv/Scripts/python manage.py createsuperuser
-   ./venv/Scripts/python manage.py runserver
-   ```
-
-The API is served at `http://localhost:8000/api/`. The Django admin (to view submitted
-leads) is at `http://localhost:8000/admin/`.
+In development run the frontend separately (`npm run dev` in `/frontend`); Vite proxies
+`/api` to this server on port 8000.
 
 ## Endpoints
 
-- `POST /api/contact/` — create a lead from the website contact form. Body:
-  `{ name, company, email, phone, interest, project_description, timeline, message }`
-  (`name`, `email`, `message` are required; the rest are optional).
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/api/contact/` | public, 20/hour/IP | Create a lead from the contact form |
+| `POST` | `/api/auth/login/` | public, 20/hour/IP | Staff login → `{access, refresh, user}` |
+| `POST` | `/api/auth/refresh/` | refresh token | New `{access, refresh}` (refresh tokens rotate) |
+| `GET` | `/api/auth/me/` | access token | Current user |
+| `GET` | `/api/leads/` | staff | List; `?page=`, `?search=`, `?status=`, `?interest=`, `?ordering=` |
+| `GET` | `/api/leads/stats/` | staff | Counts per status |
+| `GET` | `/api/leads/interests/` | staff | Distinct interests for the filter |
+| `GET` | `/api/leads/:id/` | staff | One lead |
+| `PATCH` | `/api/leads/:id/` | staff | Update `status` and/or `notes` only |
+| `DELETE` | `/api/leads/:id/` | staff | Delete a lead |
+| `POST` | `/api/leads/:id/resend_emails/` | staff | Resend confirmation + admin emails |
+| `GET` | `/health/` | public | Health check |
 
-## Lead management
+Contact body: `{ name, company, email, phone, interest, project_description, timeline, message }`
+(`name`, `email`, `message` required) plus the hidden `website` honeypot — if a bot fills
+it, the API replies success but stores and sends nothing. Validation errors come back as
+`{ field: ["message"] }`, other errors as `{ detail }`.
 
-Every contact-form submission is stored as a `Lead` in the `contact` app. Lead managers
-use the frontend portal at **`/leads`** (not the Django admin — see below) to:
+## Lead-manager accounts
 
-- Work a **status workflow**: New → Contacted → Qualified → Converted / Lost.
-- Add **internal notes** per lead, not visible to the person who submitted the form.
-- **Filter & search** by status, interest, and free text across name/email/company/message.
-- See **email delivery status** per lead and **resend** the confirmation/admin emails if
-  either failed.
-
-This is served by an authenticated API (`contact/views.py::LeadViewSet`) at
-`/api/leads/` — `GET` (list, filterable via `?status=`, `?interest=`, `?search=`),
-`GET /api/leads/stats/`, `GET /api/leads/interests/`, `PATCH /api/leads/{id}/` (status
-+ notes only — the original submission is read-only), and
-`POST /api/leads/{id}/resend_emails/`.
-
-### Portal accounts
-
-`/leads` requires a **staff** Django account (`is_staff=True`) — regular website
-visitors can never reach it, even if they guessed valid-looking credentials, because the
-login endpoint (`StaffTokenObtainPairSerializer` in `contact/auth.py`) rejects non-staff
-users before issuing a token. The superuser created via `createsuperuser` already
-qualifies. To add another lead manager without giving them superuser/admin-site access:
+The `/leads` portal accepts only active **staff** accounts. Tokens: access 8h, refresh 7d.
+Passwords are stored in Django's `pbkdf2_sha256` format, so accounts created under Django
+still work, and accounts created here would work in Django too.
 
 ```bash
-./venv/Scripts/python manage.py shell -c "
-from django.contrib.auth.models import User
-User.objects.create_user('jane', email='jane@encodestudio.in', password='choose-a-strong-password', is_staff=True)
-"
+npm run staff -- list
+npm run staff -- add jane --email jane@encodestudio.in --name "Jane Doe"
+npm run staff -- password jane
+npm run staff -- disable jane      # or: enable jane
 ```
 
-Auth is JWT (`djangorestframework-simplejwt`): `POST /api/auth/login/` returns an access
-token (8h) and refresh token (7d); the frontend stores both in `localStorage` and
-silently refreshes on expiry. `GET /api/auth/me/` returns the logged-in user's identity.
+## Emails
 
-The Django admin at `/admin/` still exists (useful for you as a developer — e.g. bulk
-actions, raw data access) but is not what lead managers are given; nothing in the
-frontend links to it.
+On every new lead, two emails go out after the response is sent (`src/emails.js`):
 
-## Automated emails
+1. **Confirmation** to the visitor, echoing what they submitted.
+2. **Admin notification** to `ADMIN_EMAIL`, CC `ADMIN_EMAIL_CC`, reply-to the lead, with an
+   "Open in Lead Manager" button linking to `LEADS_PORTAL_URL?lead=<id>`.
 
-On every new lead, two emails are sent automatically (see `contact/emails.py`):
+Delivery times are recorded on the lead; failures are logged and can be retried from the
+portal's **Resend** button.
 
-1. **Confirmation** → the person who submitted the form, thanking them and echoing back
-   what they submitted.
-2. **Admin notification** → `ADMIN_EMAIL` (`shivam@encodestudio.in`), CC'd to
-   `ADMIN_EMAIL_CC` (`encodestudio.in@gmail.com`), with the full lead detail and a link
-   into the admin panel. Replying to this email replies directly to the lead.
+Without `EMAIL_HOST` (or with `EMAIL_BACKEND=console`) emails are printed to the server log.
+To send for real, set the SMTP variables — e.g. Gmail / Google Workspace (`smtp.gmail.com`,
+port 587, an App Password) or any transactional provider (Brevo, Resend, Mailgun,
+Postmark, SendGrid all offer SMTP).
 
-Both are sent from a background thread so a slow SMTP round trip never delays the
-contact form's response to the visitor.
+## Configuration
 
-### Configuring real email delivery
-
-By default `EMAIL_BACKEND` is the **console backend** — emails are printed to the
-`runserver` log instead of actually being sent, so nothing goes out until you configure
-real SMTP credentials. To send real email, set these in `backend/.env`:
-
-```bash
-EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
-EMAIL_HOST=smtp.your-provider.com
-EMAIL_PORT=587
-EMAIL_HOST_USER=your-smtp-username
-EMAIL_HOST_PASSWORD=your-smtp-password-or-api-key
-EMAIL_USE_TLS=True
-```
-
-Common options for `encodestudio.in`:
-- **Google Workspace** (if the domain's mail is hosted there): `smtp.gmail.com`, port
-  `587`, with an [App Password](https://myaccount.google.com/apppasswords) for the sending
-  account — not the account's normal login password.
-- **Transactional email provider** (recommended for production — better deliverability
-  and no daily sending caps): SendGrid, Mailgun, Postmark, Amazon SES, or Brevo. Each
-  gives you an SMTP host/username/API-key to drop into the same four variables above.
-
-Never commit real credentials — `backend/.env` is already gitignored.
-
-## Notes
-
-- MySQL access uses `PyMySQL` (pure-Python driver) via `django.db.backends.mysql`, so no
-  MySQL C connector / `mysqlclient` build toolchain is required on Windows.
-- CORS is restricted to the origins in `CORS_ALLOWED_ORIGINS` (defaults to the Vite dev
-  server at `http://localhost:5173`).
-- The contact endpoint is rate-limited to 20 requests/hour per IP to deter spam.
+See [`.env.example`](.env.example). Production requires `NODE_ENV=production` and
+`JWT_SECRET`. Set `DB_SSL=True` when the MySQL server requires TLS.
