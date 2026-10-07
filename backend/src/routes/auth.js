@@ -34,7 +34,7 @@ router.post("/login/", async (req, res) => {
   await query(`UPDATE ${USER_TABLE} SET last_login = UTC_TIMESTAMP(6) WHERE id = ?`, [user.id]);
   res.json({
     ...issueTokens(user),
-    user: { username: user.username, name: displayName(user), is_superuser: Boolean(user.is_superuser) },
+    user: { id: user.id, username: user.username, name: displayName(user), is_superuser: Boolean(user.is_superuser) },
   });
 });
 
@@ -50,6 +50,7 @@ router.post("/refresh/", async (req, res) => {
 router.get("/me/", requireAuth, (req, res) => {
   const user = req.user;
   res.json({
+    id: user.id,
     username: user.username,
     name: displayName(user),
     is_staff: Boolean(user.is_staff),

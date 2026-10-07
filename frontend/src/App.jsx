@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import Navbar from "./components/Navbar.jsx";
 import Footer from "./components/Footer.jsx";
 import Home from "./pages/Home.jsx";
@@ -12,7 +12,8 @@ import ServiceDetail from "./pages/ServiceDetail.jsx";
 import Founder from "./pages/Founder.jsx";
 import Contact from "./pages/Contact.jsx";
 import NotFound from "./pages/NotFound.jsx";
-import LeadsPortal from "./pages/leads/LeadsPortal.jsx";
+// The lead manager (and its charting library) loads only when /leads is visited.
+const LeadsPortal = lazy(() => import("./pages/leads/LeadsPortal.jsx"));
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -52,7 +53,14 @@ export default function App() {
       <Routes>
         {/* Standalone lead-management portal — no public nav/footer, not linked
             anywhere in the public site. */}
-        <Route path="/leads/*" element={<LeadsPortal />} />
+        <Route
+          path="/leads/*"
+          element={
+            <Suspense fallback={<div className="min-h-screen bg-encode-soft" />}>
+              <LeadsPortal />
+            </Suspense>
+          }
+        />
         <Route path="/*" element={<PublicSite />} />
       </Routes>
     </BrowserRouter>

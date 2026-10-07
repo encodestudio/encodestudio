@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createLead, toPublic, validateSubmission } from "../leads.js";
+import { createLead, toPublic, trackingFields, validateSubmission } from "../leads.js";
 import { sendLeadEmails } from "../emails.js";
 
 const router = Router();
@@ -15,7 +15,7 @@ router.post("/", async (req, res) => {
   const { data, errors } = validateSubmission(req.body);
   if (errors) return res.status(400).json(errors);
 
-  const lead = await createLead(data);
+  const lead = await createLead(data, { source: "website", extra: trackingFields(req.body) });
   res.status(201).json(toPublic(lead));
 
   // Emails go out after the response so a slow SMTP round trip never delays

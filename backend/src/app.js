@@ -7,6 +7,9 @@ import { config } from "./config.js";
 import contactRoutes from "./routes/contact.js";
 import authRoutes from "./routes/auth.js";
 import leadRoutes from "./routes/leads.js";
+import taskRoutes from "./routes/tasks.js";
+import userRoutes from "./routes/users.js";
+import analyticsRoutes from "./routes/analytics.js";
 
 export function createApp() {
   const app = express();
@@ -45,6 +48,9 @@ export function createApp() {
   api.use("/auth/login", anonLimiter);
   api.use("/auth", authRoutes);
   api.use("/leads", leadRoutes);
+  api.use("/tasks", taskRoutes);
+  api.use("/users", userRoutes);
+  api.use("/analytics", analyticsRoutes);
   api.use((req, res) => res.status(404).json({ detail: "Not found." }));
 
   app.use("/api", api);
