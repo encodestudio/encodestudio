@@ -8,6 +8,9 @@ import {
   MessageSquare,
   Pencil,
   Phone,
+  ReceiptText,
+  Ban,
+  IndianRupee,
   Sparkles,
   Trash2,
   UserPlus,
@@ -29,6 +32,10 @@ const TYPES = {
   task_created: { icon: CalendarClock, tone: "bg-encode-soft text-black", verb: "scheduled a follow-up" },
   task_completed: { icon: CheckCircle2, tone: "bg-green-50 text-green-700", verb: "completed a follow-up" },
   email_sent: { icon: MailCheck, tone: "bg-encode-soft text-encode-grey", verb: "Email sent" },
+  invoice_issued: { icon: ReceiptText, tone: "bg-encode-blueTint text-encode-blueDark", verb: "issued an invoice" },
+  invoice_sent: { icon: MailCheck, tone: "bg-encode-blueTint text-encode-blueDark", verb: "emailed an invoice" },
+  payment_received: { icon: IndianRupee, tone: "bg-green-50 text-green-700", verb: "recorded a payment" },
+  invoice_voided: { icon: Ban, tone: "bg-red-50 text-red-700", verb: "voided an invoice" },
 };
 
 function describe(a) {
@@ -49,6 +56,15 @@ function describe(a) {
     );
   }
   if (a.type === "assignment" || a.type === "field_update") return a.body;
+  if (a.type.startsWith("invoice_") || a.type === "payment_received") {
+    return a.meta?.invoice_id ? (
+      <Link to={`/leads/invoices/${a.meta.invoice_id}`} className="hover:underline">
+        {a.body}
+      </Link>
+    ) : (
+      a.body
+    );
+  }
   return TYPES[a.type]?.verb || a.type;
 }
 

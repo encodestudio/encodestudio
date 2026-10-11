@@ -2,5 +2,6 @@ User-agent: *
 Allow: /
 Disallow: /leads
 Disallow: /leads/
+Disallow: /invoice/
 
 Sitemap: https://encodestudio.in/sitemap.xml

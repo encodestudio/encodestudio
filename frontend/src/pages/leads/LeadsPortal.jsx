@@ -8,6 +8,10 @@ import PipelinePage from "./PipelinePage.jsx";
 import LeadPage from "./LeadPage.jsx";
 import TasksPage from "./TasksPage.jsx";
 import TeamPage from "./TeamPage.jsx";
+import InvoicesPage from "./InvoicesPage.jsx";
+import InvoiceEditorPage from "./InvoiceEditorPage.jsx";
+import InvoiceDetailPage from "./InvoiceDetailPage.jsx";
+import InvoiceSettingsPage from "./InvoiceSettingsPage.jsx";
 import Seo from "../../components/Seo.jsx";
 import { isLoggedIn, fetchMe, clearTokens } from "../../lib/leadsApi.js";
 
@@ -63,6 +67,11 @@ export default function LeadsPortal() {
           <Route path="pipeline" element={<PipelinePage />} />
           <Route path="tasks" element={<TasksPage />} />
           <Route path="team" element={<TeamPage />} />
+          <Route path="invoices" element={<InvoicesPage />} />
+          <Route path="invoices/new" element={<InvoiceEditorPage />} />
+          <Route path="invoices/settings" element={<InvoiceSettingsPage />} />
+          <Route path="invoices/:id" element={<InvoiceDetailPage />} />
+          <Route path="invoices/:id/edit" element={<InvoiceEditorPage />} />
           <Route path="lead/:id" element={<LeadPage />} />
           <Route path="*" element={<Navigate to="/leads" replace />} />
         </Routes>

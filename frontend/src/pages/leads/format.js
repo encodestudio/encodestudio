@@ -78,3 +78,55 @@ export function initials(name = "") {
       .join("") || "?"
   );
 }
+
+// ---- Invoicing
+
+const inrExact = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 });
+/** ₹1,23,456.70: exact to the paisa, for invoices. */
+export const formatInr = (value) => (value == null || value === "" ? "—" : inrExact.format(Number(value)));
+
+/** "2026-10-11" (a calendar date, no timezone) → "11 Oct 2026". */
+export function formatDay(isoDate) {
+  if (!isoDate) return "—";
+  return new Date(`${isoDate}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
+// GST state codes, used for place of supply.
+export const INDIAN_STATES = [
+  ["01", "Jammu and Kashmir"], ["02", "Himachal Pradesh"], ["03", "Punjab"], ["04", "Chandigarh"], ["05", "Uttarakhand"],
+  ["06", "Haryana"], ["07", "Delhi"], ["08", "Rajasthan"], ["09", "Uttar Pradesh"], ["10", "Bihar"], ["11", "Sikkim"],
+  ["12", "Arunachal Pradesh"], ["13", "Nagaland"], ["14", "Manipur"], ["15", "Mizoram"], ["16", "Tripura"],
+  ["17", "Meghalaya"], ["18", "Assam"], ["19", "West Bengal"], ["20", "Jharkhand"], ["21", "Odisha"],
+  ["22", "Chhattisgarh"], ["23", "Madhya Pradesh"], ["24", "Gujarat"], ["26", "Dadra and Nagar Haveli and Daman and Diu"],
+  ["27", "Maharashtra"], ["29", "Karnataka"], ["30", "Goa"], ["31", "Lakshadweep"], ["32", "Kerala"],
+  ["33", "Tamil Nadu"], ["34", "Puducherry"], ["35", "Andaman and Nicobar Islands"], ["36", "Telangana"],
+  ["37", "Andhra Pradesh"], ["38", "Ladakh"], ["97", "Other Territory"], ["96", "Outside India (export)"],
+].map(([code, name]) => ({ code, name }));
+
+export const stateName = (code) => INDIAN_STATES.find((s) => s.code === code)?.name || "";
+
+export const TAX_MODE_OPTIONS = [
+  { value: "intra", label: "CGST + SGST (same state)" },
+  { value: "inter", label: "IGST (other state)" },
+  { value: "none", label: "No GST" },
+];
+
+export const GST_RATES = [0, 5, 12, 18, 28];
+
+export const PAYMENT_METHOD_OPTIONS = [
+  { value: "bank_transfer", label: "Bank transfer" },
+  { value: "upi", label: "UPI" },
+  { value: "cash", label: "Cash" },
+  { value: "cheque", label: "Cheque" },
+  { value: "card", label: "Card" },
+  { value: "other", label: "Other" },
+];
+
+export const INVOICE_STATUS = {
+  draft: { label: "Draft", className: "bg-encode-soft text-encode-grey ring-encode-border" },
+  issued: { label: "Unpaid", className: "bg-encode-blueTint text-encode-blueDark ring-sky-200" },
+  partially_paid: { label: "Part paid", className: "bg-amber-50 text-amber-800 ring-amber-200" },
+  paid: { label: "Paid", className: "bg-green-50 text-green-700 ring-green-200" },
+  overdue: { label: "Overdue", className: "bg-red-50 text-red-700 ring-red-200" },
+  void: { label: "Void", className: "bg-encode-soft text-encode-grey line-through ring-encode-border" },
+};

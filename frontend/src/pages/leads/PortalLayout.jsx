@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
-import { BarChart3, CheckSquare, Columns3, LogOut, Menu, Plus, Table2, Users, X } from "lucide-react";
+import { BarChart3, CheckSquare, Columns3, LogOut, Menu, Plus, ReceiptText, Table2, Users, X } from "lucide-react";
 import Logo from "../../components/Logo.jsx";
 import { PortalContext } from "./PortalContext.jsx";
 import NewLeadModal from "./NewLeadModal.jsx";
@@ -13,6 +13,7 @@ const NAV = [
   { to: "/leads/list", label: "Leads", icon: Table2 },
   { to: "/leads/pipeline", label: "Pipeline", icon: Columns3 },
   { to: "/leads/tasks", label: "Tasks", icon: CheckSquare, badge: "tasks" },
+  { to: "/leads/invoices", label: "Invoices", icon: ReceiptText },
   { to: "/leads/team", label: "Team", icon: Users },
 ];
 

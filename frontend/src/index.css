@@ -66,3 +66,18 @@ body {
 .animate-marquee {
   animation: marquee 28s linear infinite;
 }
+
+/* Invoices print as A4 with the browser's "Save as PDF". */
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .invoice-doc {
+    padding: 0 !important;
+  }
+}

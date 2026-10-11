@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { X } from "lucide-react";
-import { initials } from "./format.js";
+import { INVOICE_STATUS, initials } from "./format.js";
 
 export function Avatar({ name, size = "sm", className = "" }) {
   const sizes = { xs: "h-6 w-6 text-[10px]", sm: "h-8 w-8 text-xs", md: "h-10 w-10 text-sm", lg: "h-14 w-14 text-lg" };
@@ -166,5 +166,14 @@ export function Toast({ message, tone = "default", onDone }) {
     >
       {message}
     </motion.div>
+  );
+}
+
+export function InvoiceStatusBadge({ status }) {
+  const meta = INVOICE_STATUS[status] || INVOICE_STATUS.draft;
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${meta.className}`}>
+      {meta.label}
+    </span>
   );
 }
