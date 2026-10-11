@@ -15,7 +15,7 @@ encodestudio/
 ## Local development
 
 ```bash
-npm run setup               # install everything
+npm install                 # installs root, backend and frontend dependencies
 npm run build               # build frontend/dist
 npm run db:migrate:local    # local D1 database
 npm run staff -- add <username> --superuser

@@ -8,6 +8,10 @@
   // Needed by worker-mailer (SMTP over TCP sockets).
   "compatibility_flags": ["nodejs_compat"],
 
+  // Builds frontend/dist before every deploy (and `wrangler dev`), so a fresh
+  // clone, including Cloudflare Workers Builds, deploys without extra steps.
+  "build": { "command": "npm run build" },
+
   "assets": {
     "directory": "frontend/dist",
     "binding": "ASSETS",

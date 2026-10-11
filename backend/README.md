@@ -16,7 +16,7 @@ assets, so the site and the API share one origin, and it all fits in Cloudflare'
 From the repo root:
 
 ```bash
-npm run setup               # installs root, backend and frontend dependencies
+npm install                 # installs root, backend and frontend dependencies
 npm run build               # builds frontend/dist (the Worker serves it)
 npm run db:migrate:local    # creates the local D1 database in .wrangler/
 npm run staff -- add <username> --name "First Last" --superuser
