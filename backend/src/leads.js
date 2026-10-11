@@ -1,4 +1,4 @@
-import { query } from "./db.js";
+import { NOW, batch, prepare, query, userNameSql } from "./db.js";
 
 // Table created by the original Django app (`contact.Lead`), extended by
 // migration 0002 with CRM fields. Existing leads carry over untouched.
@@ -150,9 +150,8 @@ export function toManage(lead) {
   };
 }
 
-const OWNER_NAME_SQL = `NULLIF(TRIM(CONCAT(o.first_name, ' ', o.last_name)), '')`;
 export const LEAD_SELECT = `
-  SELECT l.*, COALESCE(${OWNER_NAME_SQL}, o.username) AS owner_name,
+  SELECT l.*, ${userNameSql("o")} AS owner_name,
          (SELECT COUNT(*) FROM lead_task t WHERE t.lead_id = l.id AND t.completed_at IS NULL) AS open_tasks,
          (SELECT MIN(t.due_at) FROM lead_task t WHERE t.lead_id = l.id AND t.completed_at IS NULL) AS next_task_due_at
   FROM ${LEAD_TABLE} l
@@ -181,7 +180,7 @@ export async function createLead(data, { source = "website", userId = null, extr
   const columns = Object.keys(fields);
   const result = await query(
     `INSERT INTO ${LEAD_TABLE} (${columns.join(", ")}, created_at, updated_at, status_changed_at, last_activity_at)
-     VALUES (${columns.map(() => "?").join(", ")}, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))`,
+     VALUES (${columns.map(() => "?").join(", ")}, ${NOW}, ${NOW}, ${NOW}, ${NOW})`,
     Object.values(fields),
   );
   const body =
@@ -194,25 +193,32 @@ export async function markEmailSent(id, column) {
   if (column !== "confirmation_email_sent_at" && column !== "admin_notification_sent_at") {
     throw new Error(`Unknown email column: ${column}`);
   }
-  await query(`UPDATE ${LEAD_TABLE} SET ${column} = UTC_TIMESTAMP(6) WHERE id = ?`, [id]);
+  await query(`UPDATE ${LEAD_TABLE} SET ${column} = ${NOW} WHERE id = ?`, [id]);
 }
 
 // Activity types that count as reaching out to the lead.
 export const CONTACT_ACTIVITY_TYPES = ["call", "email", "meeting"];
 
-export async function logActivity(leadId, userId, type, body = "", meta = null) {
-  await query(
-    `INSERT INTO lead_activity (lead_id, user_id, type, body, meta, created_at)
-     VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP(6))`,
-    [leadId, userId, type, body, meta ? JSON.stringify(meta) : null],
-  );
+/** Statements that record an activity and bump the lead's activity timestamps.
+ *  Returned unexecuted so callers can batch several leads into one round trip. */
+export function activityStatements(leadId, userId, type, body = "", meta = null) {
+  const statements = [
+    prepare(
+      `INSERT INTO lead_activity (lead_id, user_id, type, body, meta, created_at) VALUES (?, ?, ?, ?, ?, ${NOW})`,
+      [leadId, userId, type, body, meta ? JSON.stringify(meta) : null],
+    ),
+  ];
   if (type !== "email_sent") {
-    await query(`UPDATE ${LEAD_TABLE} SET last_activity_at = UTC_TIMESTAMP(6) WHERE id = ?`, [leadId]);
+    statements.push(prepare(`UPDATE ${LEAD_TABLE} SET last_activity_at = ${NOW} WHERE id = ?`, [leadId]));
   }
   if (CONTACT_ACTIVITY_TYPES.includes(type)) {
-    await query(
-      `UPDATE ${LEAD_TABLE} SET first_contacted_at = COALESCE(first_contacted_at, UTC_TIMESTAMP(6)) WHERE id = ?`,
-      [leadId],
+    statements.push(
+      prepare(`UPDATE ${LEAD_TABLE} SET first_contacted_at = COALESCE(first_contacted_at, ${NOW}) WHERE id = ?`, [leadId]),
     );
   }
+  return statements;
+}
+
+export async function logActivity(...args) {
+  await batch(activityStatements(...args));
 }

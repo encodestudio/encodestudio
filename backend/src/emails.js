@@ -1,27 +1,34 @@
-import nodemailer from "nodemailer";
+import { WorkerMailer } from "worker-mailer";
 import { config } from "./config.js";
 import { logActivity, markEmailSent } from "./leads.js";
 
-const transport = config.email.useConsole
-  ? nodemailer.createTransport({ jsonTransport: true })
-  : nodemailer.createTransport({
-      host: config.email.host,
-      port: config.email.port,
-      secure: config.email.useSsl,
-      requireTLS: config.email.useTls && !config.email.useSsl,
-      auth: config.email.user ? { user: config.email.user, pass: config.email.password } : undefined,
-      connectionTimeout: 10_000,
-      greetingTimeout: 10_000,
-      socketTimeout: 10_000,
-    });
+/** "Name <email>" → { name, email }. */
+function parseAddress(value) {
+  const match = /^\s*(.*?)\s*<([^>]+)>\s*$/.exec(value);
+  return match ? { name: match[1].replace(/^"|"$/g, ""), email: match[2] } : { email: value.trim() };
+}
 
-async function send(message) {
-  const info = await transport.sendMail({ from: config.email.from, ...message });
+// SMTP over Cloudflare TCP sockets (Gmail on 587 with STARTTLS, as before).
+async function send({ replyTo, ...message }) {
   if (config.email.useConsole) {
     // Same idea as Django's console backend: print instead of sending.
     console.log(`[email:console] to=${[message.to, message.cc].flat().filter(Boolean).join(", ")} subject="${message.subject}"\n${message.text}\n`);
+    return;
   }
-  return info;
+  const { email } = config;
+  await WorkerMailer.send(
+    {
+      host: email.host,
+      port: email.port,
+      secure: email.useSsl,
+      startTls: email.useTls,
+      credentials: email.user ? { username: email.user, password: email.password } : undefined,
+      authType: ["plain", "login"],
+      socketTimeoutMs: 10_000,
+      responseTimeoutMs: 10_000,
+    },
+    { from: parseAddress(email.from), reply: replyTo, ...message },
+  );
 }
 
 const escapeHtml = (value = "") =>
@@ -189,7 +196,7 @@ export async function sendLeadAdminNotificationEmail(lead) {
   try {
     await send({
       to: config.email.adminTo,
-      cc: config.email.adminCc,
+      cc: config.email.adminCc.length ? config.email.adminCc : undefined,
       replyTo: lead.email,
       subject: `New lead: ${lead.name} (${lead.interest || "General enquiry"})`,
       text,

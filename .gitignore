@@ -5,3 +5,10 @@ Thumbs.db
 
 # Claude Code local dev tooling (session-specific, not needed by other contributors)
 .claude/
+
+# Node / Cloudflare
+node_modules/
+.wrangler/
+.dev.vars
+.env
+backend/d1-import.sql

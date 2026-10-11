@@ -1,0 +1,59 @@
+// Cloudflare Worker that serves all of encodestudio.in: the built React app as
+// static assets, plus the /api routes (Hono + D1) from backend/src.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "encodestudio",
+  "main": "backend/src/index.js",
+  "compatibility_date": "2026-06-01",
+  // Needed by worker-mailer (SMTP over TCP sockets).
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Builds frontend/dist before every deploy (and `wrangler dev`), so a fresh
+  // clone, including Cloudflare Workers Builds, deploys without extra steps.
+  "build": { "command": "npm run build" },
+
+  "assets": {
+    "directory": "frontend/dist",
+    "binding": "ASSETS",
+    // Unknown paths get index.html so React Router can handle them.
+    "not_found_handling": "single-page-application",
+    // Only these reach the Worker; everything else is served straight from the CDN.
+    "run_worker_first": ["/api/*", "/health/"]
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "encodestudio",
+      "database_id": "9ca90c36-9dcf-44a4-bc14-897afd55deff",
+      "migrations_dir": "backend/migrations"
+    }
+  ],
+
+  // Non-secret settings. Secrets (JWT_SECRET, EMAIL_HOST_PASSWORD) are set with
+  // `npx wrangler secret put <NAME>`; locally they come from .dev.vars.
+  "vars": {
+    "ENVIRONMENT": "production",
+    "CONTACT_RATE_LIMIT_PER_HOUR": "20",
+    "EMAIL_HOST": "smtp.gmail.com",
+    "EMAIL_PORT": "587",
+    "EMAIL_HOST_USER": "encodestudio.in@gmail.com",
+    "EMAIL_USE_TLS": "True",
+    "DEFAULT_FROM_EMAIL": "Encode Studio <encodestudio.in@gmail.com>",
+    "ADMIN_EMAIL": "shivam@encodestudio.in",
+    "ADMIN_EMAIL_CC": "encodestudio.in@gmail.com",
+    "LEADS_PORTAL_URL": "https://encodestudio.in/leads",
+    "CORS_ALLOWED_ORIGINS": "https://encodestudio.in,https://www.encodestudio.in"
+  },
+
+  // Custom domains: `wrangler deploy` creates their DNS records and certificates.
+  // (Deploy fails if another DNS record already exists for these hostnames.)
+  "routes": [
+    { "pattern": "encodestudio.in", "custom_domain": true },
+    { "pattern": "www.encodestudio.in", "custom_domain": true }
+  ],
+
+  "observability": { "enabled": true },
+
+  "dev": { "port": 8000 }
+}

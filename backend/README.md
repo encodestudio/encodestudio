@@ -1,30 +1,31 @@
-# Encode Studio — Backend (Node.js + Express + MySQL)
+# Encode Studio — Backend (Cloudflare Worker + Hono + D1)
 
-One Node process that serves:
+The API runs as a Cloudflare Worker (`src/index.js`), configured by `wrangler.jsonc` at the
+repo root. The same Worker also serves the built React app (`frontend/dist`) as static
+assets, so the site and the API share one origin, and it all fits in Cloudflare's free plan.
 
-- the JSON API under `/api` (contact form, lead-manager portal, auth), and
-- the built React app (`frontend/dist`) for every other URL, with client-side routing.
+- **Hono** handles routing. Only `/api/*` and `/health/` run Worker code; every other URL is
+  served straight from Cloudflare's CDN, and unknown paths get `index.html` for React Router.
+- **D1** (Cloudflare's SQLite) holds the data. It has the same tables and columns the old
+  MySQL/Django database had: `contact_lead`, `auth_user`, `lead_activity` and `lead_task`.
+- **Email** goes out through the existing Gmail SMTP account, using `worker-mailer` over
+  Cloudflare TCP sockets.
 
-It uses the **same MySQL database and tables** the old Django backend created
-(`contact_lead`, `auth_user`), so existing leads and staff logins carry over with no
-migration. The DB is configured with the same `DB_*` variables as before.
+## Setup (local)
 
-## Setup
+From the repo root:
 
 ```bash
-cd backend
-npm install
-cp .env.example .env      # skip if you already have backend/.env — it works as-is
-npm run db:init           # applies schema migrations (the server also does this on start)
+npm install                 # installs root, backend and frontend dependencies
+npm run build               # builds frontend/dist (the Worker serves it)
+npm run db:migrate:local    # creates the local D1 database in .wrangler/
 npm run staff -- add <username> --name "First Last" --superuser
-npm run dev               # http://localhost:8000, restarts on file changes
+npm run dev                 # Worker on http://localhost:8000
+npm run dev:frontend        # optional: Vite on :5173 with hot reload, proxies /api to :8000
 ```
 
-For a brand-new database, create it and the app user first with `setup.sql`
-(`mysql -u root -p < setup.sql`).
-
-In development run the frontend separately (`npm run dev` in `/frontend`); Vite proxies
-`/api` to this server on port 8000.
+Local settings and secrets live in `.dev.vars` at the repo root (gitignored). It has
+`EMAIL_BACKEND=console`, so emails are printed to the terminal instead of being sent.
 
 ## Endpoints
 
@@ -56,25 +57,44 @@ it, the API replies success but stores and sends nothing. Validation errors come
 
 ## Database migrations
 
-`src/migrate.js` holds ordered, run-once migrations, recorded in `app_migrations`. They
-only add tables, columns and indexes, never drop data. The server applies pending ones on
-start, so deploying new code is enough. `0002_crm` adds the CRM fields to `contact_lead`
-(owner, priority, deal value, tags, source + UTM, timestamps) and the `lead_activity` and
-`lead_task` tables. The DB user needs `ALTER`/`CREATE`/`INDEX` rights (`setup.sql`
-grants them).
+Migrations are plain SQL files in `migrations/`, applied with Wrangler and recorded in D1's
+`d1_migrations` table. To change the schema, add the next numbered file
+(`0002_<name>.sql`), then run:
+
+```bash
+npm run db:migrate:local    # local dev database
+npm run db:migrate          # production
+```
+
+Datetimes are stored as UTC ISO-8601 text (`2026-10-11T13:56:39.645Z`). `src/db.js` turns
+`*_at` columns back into `Date` objects and writes `Date` parameters in the same format.
+D1 accepts at most 100 bound parameters per statement, so long `IN (...)` lists are chunked.
+
+### Importing the old MySQL data
+
+`scripts/export-mysql.js` reads the old database (using the `DB_*` variables in
+`backend/.env`), writes `backend/d1-import.sql`, and can load it into D1:
+
+```bash
+npm run export-mysql -- --apply --remote   # into production D1 (use a freshly migrated, empty DB)
+```
 
 ## Lead-manager accounts
 
 The `/leads` portal accepts only active **staff** accounts. Tokens: access 8h, refresh 7d.
-Passwords are stored in Django's `pbkdf2_sha256` format, so accounts created under Django
-still work, and accounts created here would work in Django too.
+Passwords are stored in Django's `pbkdf2_sha256` format.
 
 ```bash
-npm run staff -- list
-npm run staff -- add jane --email jane@encodestudio.in --name "Jane Doe"
-npm run staff -- password jane
-npm run staff -- disable jane      # or: enable jane
+npm run staff -- list --remote
+npm run staff -- add jane --email jane@encodestudio.in --name "Jane Doe" --remote
+npm run staff -- password jane --remote
+npm run staff -- disable jane --remote      # or: enable jane
 ```
+
+Without `--remote` these commands work on the local dev database. Passwords use 40,000
+PBKDF2 iterations, because Workers' Web Crypto caps PBKDF2 at 100,000 and the free plan
+allows about 10 ms of CPU per request. Accounts imported from Django (1,000,000 iterations)
+can't log in until their password is reset with `password`.
 
 ## Emails
 
@@ -87,12 +107,19 @@ On every new lead, two emails go out after the response is sent (`src/emails.js`
 Delivery times are recorded on the lead; failures are logged and can be retried from the
 portal's **Resend** button.
 
-Without `EMAIL_HOST` (or with `EMAIL_BACKEND=console`) emails are printed to the server log.
-To send for real, set the SMTP variables — e.g. Gmail / Google Workspace (`smtp.gmail.com`,
-port 587, an App Password) or any transactional provider (Brevo, Resend, Mailgun,
-Postmark, SendGrid all offer SMTP).
+Without `EMAIL_HOST` (or with `EMAIL_BACKEND=console`) emails are printed to the Worker log
+(`npm run logs`). Production uses Gmail SMTP (`smtp.gmail.com:587` with an App Password),
+set in `wrangler.jsonc` `vars` plus the `EMAIL_HOST_PASSWORD` secret. Any SMTP provider on
+port 587 or 465 works; Cloudflare blocks outbound port 25.
 
 ## Configuration
 
-See [`.env.example`](.env.example). Production requires `NODE_ENV=production` and
-`JWT_SECRET`. Set `DB_SSL=True` when the MySQL server requires TLS.
+Non-secret settings are in `vars` in `wrangler.jsonc`. Set the secrets once per account:
+
+```bash
+npx wrangler secret put JWT_SECRET            # long random string
+npx wrangler secret put EMAIL_HOST_PASSWORD   # Gmail App Password
+```
+
+The anonymous endpoints (contact form, login) are limited to `CONTACT_RATE_LIMIT_PER_HOUR`
+requests per IP per hour, counted in D1's `rate_limit` table.
