@@ -47,6 +47,10 @@ pages · Meet the Founder · Contact. Per-route SEO meta and schema come from
     tracking (UTM, referrer, landing page), email delivery and resend, and duplicate detection.
   - **Follow-ups**: overdue, today and upcoming tasks, with a badge in the sidebar.
   - **Team**: admins add, edit and deactivate staff; everyone can change their own password.
+  - **Invoices**: GST tax invoices (CGST/SGST or IGST by place of supply) with numbering per
+    financial year, created from a lead or on their own. Includes partial payments, overdue
+    tracking, void and duplicate, a private client link with print-to-PDF, email to the
+    client, and admin settings for business, bank and UPI details.
   - Phone and walk-in leads can be added by hand. Notification emails link straight to the lead.
 
 ## Deploy (Cloudflare)

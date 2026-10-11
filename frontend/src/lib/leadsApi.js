@@ -160,3 +160,27 @@ export const updateUser = (id, patch) => request(`/users/${id}/`, { method: "PAT
 
 // ---- Analytics
 export const fetchAnalytics = (params) => request(`/analytics/${qs(params)}`);
+
+// ---- Invoices
+export const fetchInvoices = (params) => request(`/invoices/${qs(params)}`);
+export const fetchInvoiceSummary = () => request("/invoices/summary/");
+export const fetchInvoice = (id) => request(`/invoices/${id}/`);
+export const createInvoice = (data) => request("/invoices/", { method: "POST", body: data });
+export const updateInvoice = (id, patch) => request(`/invoices/${id}/`, { method: "PATCH", body: patch });
+export const deleteInvoice = (id) => request(`/invoices/${id}/`, { method: "DELETE" });
+export const issueInvoice = (id) => request(`/invoices/${id}/issue/`, { method: "POST" });
+export const sendInvoice = (id, data) => request(`/invoices/${id}/send/`, { method: "POST", body: data });
+export const voidInvoice = (id, reason) => request(`/invoices/${id}/void/`, { method: "POST", body: { reason } });
+export const duplicateInvoice = (id) => request(`/invoices/${id}/duplicate/`, { method: "POST" });
+export const addInvoicePayment = (id, data) => request(`/invoices/${id}/payments/`, { method: "POST", body: data });
+export const deleteInvoicePayment = (id, paymentId) =>
+  request(`/invoices/${id}/payments/${paymentId}/`, { method: "DELETE" });
+export const fetchInvoiceSettings = () => request("/invoices/settings/");
+export const saveInvoiceSettings = (data) => request("/invoices/settings/", { method: "PUT", body: data });
+
+/** Client-facing view of an issued invoice (no login). */
+export async function fetchPublicInvoice(token) {
+  const res = await fetch(`${API_BASE}/public/invoices/${token}`);
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}

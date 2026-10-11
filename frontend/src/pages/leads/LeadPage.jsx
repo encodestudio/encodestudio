@@ -23,6 +23,7 @@ import {
   deleteLead,
   deleteTask,
   fetchActivities,
+  fetchInvoices,
   fetchLead,
   fetchRelatedLeads,
   fetchTasks,
@@ -33,8 +34,8 @@ import {
 import { usePortal } from "./PortalContext.jsx";
 import ActivityItem from "./ActivityItem.jsx";
 import StatusBadge from "./StatusBadge.jsx";
-import { Avatar, Card, Field, Modal, ScoreRing, Tag } from "./ui.jsx";
-import { PRIORITY_OPTIONS, SOURCE_OPTIONS, formatDate, formatMoney, timeAgo } from "./format.js";
+import { Avatar, Card, Field, InvoiceStatusBadge, Modal, ScoreRing, Tag } from "./ui.jsx";
+import { PRIORITY_OPTIONS, SOURCE_OPTIONS, formatDate, formatDay, formatInr, formatMoney, timeAgo } from "./format.js";
 
 const STAGES = [
   { value: "new", label: "New" },
@@ -206,6 +207,7 @@ export default function LeadPage() {
   const [activities, setActivities] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [related, setRelated] = useState([]);
+  const [invoices, setInvoices] = useState([]);
   const [error, setError] = useState("");
   const [composerType, setComposerType] = useState("note");
   const [composerText, setComposerText] = useState("");
@@ -235,6 +237,7 @@ export default function LeadPage() {
     loadTimeline();
     loadTasks();
     fetchRelatedLeads(id).then(setRelated).catch(() => {});
+    fetchInvoices({ lead: id }).then(setInvoices).catch(() => {});
   }, [id, loadTimeline, loadTasks]);
 
   const save = async (patch, message) => {
@@ -545,6 +548,35 @@ export default function LeadPage() {
                 <TagEditor tags={lead.tags} onChange={(tags) => save({ tags })} />
               </Field>
             </div>
+          </Card>
+
+          <Card
+            title="Invoices"
+            action={
+              <Link to={`/leads/invoices/new?lead=${lead.id}`} className="flex items-center gap-1 text-xs font-semibold text-encode-blueDark hover:underline">
+                <Plus size={13} /> New
+              </Link>
+            }
+          >
+            {invoices.length === 0 ? (
+              <p className="text-sm text-encode-grey">No invoices for this lead yet.</p>
+            ) : (
+              <ul className="-my-1 divide-y divide-encode-border">
+                {invoices.map((inv) => (
+                  <li key={inv.id}>
+                    <Link to={`/leads/invoices/${inv.id}`} className="flex items-center justify-between gap-2 py-2 hover:opacity-80">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{inv.number || `Draft #${inv.id}`}</p>
+                        <p className="text-xs text-encode-grey">
+                          {formatDay(inv.issue_date)} · {formatInr(inv.total)}
+                        </p>
+                      </div>
+                      <InvoiceStatusBadge status={inv.display_status} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
 
           <Card

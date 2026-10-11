@@ -48,12 +48,39 @@ Local settings and secrets live in `.dev.vars` at the repo root (gitignored). It
 | `GET` / `POST` / `PATCH` / `DELETE` | `/api/tasks/` | staff | Follow-ups (`?scope=mine&state=open|done&lead=`), plus `/summary/` |
 | `GET` / `POST` / `PATCH` | `/api/users/` | staff / admin | Team members (admins add, edit, deactivate) |
 | `GET` | `/api/analytics/?from=&to=&tz=` | staff | KPIs, trend, funnel, breakdowns, heatmap, activity feed |
+| `GET` / `POST` | `/api/invoices/` | staff | List (`?status=draft|outstanding|overdue|paid|void&search=&lead=`); create a draft (`lead_id` fills the client from the lead) |
+| `GET` / `PATCH` / `DELETE` | `/api/invoices/:id/` | staff | Read; edit (drafts fully, issued only due date/notes/terms); delete drafts |
+| `POST` | `/api/invoices/:id/issue/`, `/send/`, `/void/`, `/duplicate/` | staff | Assign the next number; email the client a view link; void; copy to a new draft |
+| `POST` / `DELETE` | `/api/invoices/:id/payments/[:paymentId/]` | staff | Record or remove a payment |
+| `GET` | `/api/invoices/summary/` | staff | Outstanding, overdue, received this month, invoiced this FY |
+| `GET` / `PUT` | `/api/invoices/settings/` | staff / admin | Business details, bank/UPI, numbering and defaults |
+| `GET` | `/api/public/invoices/:token` | public (token) | The client's copy of an issued invoice |
 | `GET` | `/health/` | public | Health check |
 
 Contact body: `{ name, company, email, phone, interest, project_description, timeline, message }`
 (`name`, `email`, `message` required) plus the hidden `website` honeypot — if a bot fills
 it, the API replies success but stores and sends nothing. Validation errors come back as
 `{ field: ["message"] }`, other errors as `{ detail }`.
+
+## Invoicing
+
+GST invoices live in `invoice`, `invoice_item` and `invoice_payment` (migration `0002`),
+with business details in `invoice_settings`. The rules follow Indian GST practice:
+
+- **Numbering.** Drafts have no number. Issuing assigns the next number in the financial year
+  (April–March), e.g. `ES/2026-27/001`, from `invoice_sequence`. Issued invoices can't be
+  deleted or edited (apart from due date, notes and terms). Instead they're voided, which
+  keeps the number, and duplicated into a corrected draft.
+- **Tax.** CGST + SGST when the client's state (place of supply) matches the business
+  state, IGST when it doesn't, and no GST when the business has no GSTIN. A discount is
+  taken off before tax. The maths lives in `frontend/src/lib/invoiceMath.js`, shared by the
+  editor's live totals and the API, so they always agree.
+- **Status.** Only `draft`, `issued` and `void` are stored. *Part paid*, *paid* and
+  *overdue* are worked out from payments and the due date, in India's timezone.
+- **Client view.** Each issued invoice has a private link, `/invoice/<128-bit token>`,
+  that needs no login. Clients download a PDF through the browser's print dialog. Sending
+  emails that link through the same Gmail SMTP, CC'ing `ADMIN_EMAIL`.
+- Issuing, sending, payments and voids are logged on the linked lead's timeline.
 
 ## Database migrations
 

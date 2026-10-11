@@ -9,6 +9,8 @@ import leadRoutes from "./routes/leads.js";
 import taskRoutes from "./routes/tasks.js";
 import userRoutes from "./routes/users.js";
 import analyticsRoutes from "./routes/analytics.js";
+import invoiceRoutes from "./routes/invoices.js";
+import publicRoutes from "./routes/public.js";
 
 // One Cloudflare Worker serves the whole site. Static assets (the built React
 // app) are answered by Cloudflare before this code runs; only /api/* and
@@ -83,6 +85,8 @@ api.route("/leads", leadRoutes);
 api.route("/tasks", taskRoutes);
 api.route("/users", userRoutes);
 api.route("/analytics", analyticsRoutes);
+api.route("/invoices", invoiceRoutes);
+api.route("/public", publicRoutes);
 app.route("/api", api);
 
 // Unknown API paths get a JSON 404; anything else that reaches the Worker falls

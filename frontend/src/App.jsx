@@ -14,6 +14,7 @@ import Contact from "./pages/Contact.jsx";
 import NotFound from "./pages/NotFound.jsx";
 // The lead manager (and its charting library) loads only when /leads is visited.
 const LeadsPortal = lazy(() => import("./pages/leads/LeadsPortal.jsx"));
+const PublicInvoice = lazy(() => import("./pages/PublicInvoice.jsx"));
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -58,6 +59,15 @@ export default function App() {
           element={
             <Suspense fallback={<div className="min-h-screen bg-encode-soft" />}>
               <LeadsPortal />
+            </Suspense>
+          }
+        />
+        {/* Client's view of an invoice, from the emailed link. */}
+        <Route
+          path="/invoice/:token"
+          element={
+            <Suspense fallback={<div className="min-h-screen bg-encode-soft" />}>
+              <PublicInvoice />
             </Suspense>
           }
         />
