@@ -255,7 +255,16 @@ function invoiceHtml(invoice, business, message) {
                   ${paid ? row("Paid so far", inr(invoice.amount_paid)) : ""}
                   ${row("Amount due", inr(invoice.balance), true)}
                 </table>
-                <a href="${escapeHtml(invoice.public_url)}" style="display:inline-block; background-color:#000000; color:#ffffff; text-decoration:none; font-size:14px; font-weight:600; padding:12px 22px; border-radius:999px;">View &amp; download invoice →</a>
+                ${
+                  invoice.payment_link_url
+                    ? `<a href="${escapeHtml(invoice.payment_link_url)}" style="display:inline-block; background-color:#38B6FF; color:#000000; text-decoration:none; font-size:14px; font-weight:700; padding:12px 22px; border-radius:999px; margin:0 8px 8px 0;">Pay ${inr(invoice.balance)} now →</a>`
+                    : ""
+                }<a href="${escapeHtml(invoice.public_url)}" style="display:inline-block; background-color:#000000; color:#ffffff; text-decoration:none; font-size:14px; font-weight:600; padding:12px 22px; border-radius:999px; margin:0 0 8px 0;">View &amp; download invoice</a>
+                ${
+                  invoice.payment_link_url
+                    ? `<p style="margin:12px 0 0 0; font-size:12px; color:#6B7280;">Pay securely online by UPI, card, net banking or wallet via Razorpay.</p>`
+                    : ""
+                }
               </td>
             </tr>
             <tr>
@@ -288,6 +297,7 @@ export async function sendInvoiceEmail(invoice, business, { to, message = "" }) 
     (invoice.due_date ? `Due date: ${longDate(invoice.due_date)}\n` : "") +
     `Invoice total: ${inr(invoice.total)}\n` +
     `Amount due: ${inr(invoice.balance)}\n\n` +
+    (invoice.payment_link_url ? `Pay online (UPI, card, net banking): ${invoice.payment_link_url}\n` : "") +
     `View and download: ${invoice.public_url}\n\n` +
     `— ${business.business_name}`;
   try {

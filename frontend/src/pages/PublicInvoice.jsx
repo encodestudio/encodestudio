@@ -1,22 +1,55 @@
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { Printer } from "lucide-react";
+import { CheckCircle2, Printer } from "lucide-react";
 import Seo from "../components/Seo.jsx";
-import { fetchPublicInvoice } from "../lib/leadsApi.js";
+import { confirmRazorpayReturn, fetchPublicInvoice } from "../lib/leadsApi.js";
 import InvoiceDocument from "./leads/InvoiceDocument.jsx";
+
+const RAZORPAY_PARAMS = [
+  "razorpay_payment_id",
+  "razorpay_payment_link_id",
+  "razorpay_payment_link_reference_id",
+  "razorpay_payment_link_status",
+  "razorpay_signature",
+];
 
 // The client's view of an invoice, reached from the emailed link. "Download PDF"
 // uses the browser's print dialog (Save as PDF), so no PDF library is needed.
+// Razorpay sends the customer back here after paying, with signed razorpay_* params.
 export default function PublicInvoice() {
   const { token } = useParams();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [payment, setPayment] = useState(null); // null | "confirming" | "paid" | "pending"
 
   useEffect(() => {
-    fetchPublicInvoice(token)
-      .then(setData)
-      .catch((e) => setError(e.message));
+    const returned = Object.fromEntries(RAZORPAY_PARAMS.map((k) => [k, params.get(k)]));
+    const isReturn = Boolean(returned.razorpay_payment_id && returned.razorpay_signature);
+    if (isReturn) {
+      setPayment("confirming");
+      // Drop the params so a refresh or a shared URL doesn't carry them.
+      setParams({}, { replace: true });
+    }
+    (async () => {
+      try {
+        const loaded = await fetchPublicInvoice(token);
+        if (!isReturn) return setData(loaded);
+        try {
+          const confirmed = await confirmRazorpayReturn(token, returned);
+          setData({ ...loaded, invoice: confirmed.invoice });
+          setPayment("paid");
+        } catch {
+          // Not verifiable here; the Razorpay webhook will still record it.
+          setData(loaded);
+          setPayment("pending");
+        }
+      } catch (e) {
+        setError(e.message);
+      }
+    })();
+    // Runs once per invoice; params are read on first load only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   useEffect(() => {
@@ -39,9 +72,22 @@ export default function PublicInvoice() {
           <p className="mt-1 text-sm text-encode-grey">Check the link in your email, or reply to it and we'll help.</p>
         </div>
       ) : !data ? (
-        <p className="text-center text-sm text-encode-grey">Loading invoice...</p>
+        <p className="text-center text-sm text-encode-grey">{payment === "confirming" ? "Confirming your payment..." : "Loading invoice..."}</p>
       ) : (
         <>
+          {payment && payment !== "confirming" && (
+            <div role="status" className="mx-auto mb-4 flex max-w-[820px] items-start gap-3 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 print:hidden">
+              <CheckCircle2 size={18} className="mt-0.5 shrink-0" />
+              <p>
+                <strong>Thank you, payment received.</strong>{" "}
+                {payment === "paid"
+                  ? data.invoice.balance > 0
+                    ? "It's been applied to this invoice."
+                    : "This invoice is now paid in full."
+                  : "It can take a minute to show on this invoice. You'll also get a receipt from Razorpay."}
+              </p>
+            </div>
+          )}
           <div className="mx-auto mb-4 flex max-w-[820px] items-center justify-between px-4 print:hidden sm:px-0">
             <p className="text-sm text-encode-grey">
               Invoice from <strong className="text-black">{data.business.business_name}</strong>

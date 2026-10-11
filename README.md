@@ -50,7 +50,9 @@ pages · Meet the Founder · Contact. Per-route SEO meta and schema come from
   - **Invoices**: GST tax invoices (CGST/SGST or IGST by place of supply) with numbering per
     financial year, created from a lead or on their own. Includes partial payments, overdue
     tracking, void and duplicate, a private client link with print-to-PDF, email to the
-    client, and admin settings for business, bank and UPI details.
+    client, and admin settings for business, bank and UPI details. When Razorpay is connected,
+    each invoice carries a **Pay now** payment link, and online payments are recorded on it
+    automatically.
   - Phone and walk-in leads can be added by hand. Notification emails link straight to the lead.
 
 ## Deploy (Cloudflare)
@@ -63,6 +65,9 @@ npx wrangler d1 create encodestudio         # paste the database_id into wrangle
 npm run db:migrate                          # create the tables in production D1
 npx wrangler secret put JWT_SECRET
 npx wrangler secret put EMAIL_HOST_PASSWORD
+npx wrangler secret put RAZORPAY_KEY_ID          # optional: Pay-now links on invoices
+npx wrangler secret put RAZORPAY_KEY_SECRET
+npx wrangler secret put RAZORPAY_WEBHOOK_SECRET
 npm run staff -- add <username> --superuser --remote
 ```
 

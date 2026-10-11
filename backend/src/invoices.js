@@ -18,6 +18,7 @@ export const PAYMENT_METHODS = {
   cash: "Cash",
   cheque: "Cheque",
   card: "Card",
+  razorpay: "Razorpay (online)",
   other: "Other",
 };
 export const MAX_ITEMS = 50;
@@ -49,7 +50,18 @@ export async function getSettings() {
   const [settings] = await query("SELECT * FROM invoice_settings WHERE id = 1");
   const fy = financialYear(todayInIndia());
   const [seq] = await query("SELECT last_number FROM invoice_sequence WHERE fy = ?", [fy]);
-  return { ...settings, current_fy: fy, next_number: (seq?.last_number ?? 0) + 1 };
+  const { razorpay } = config;
+  return {
+    ...settings,
+    current_fy: fy,
+    next_number: (seq?.last_number ?? 0) + 1,
+    razorpay: {
+      enabled: razorpay.enabled,
+      mode: razorpay.keyId.startsWith("rzp_live_") ? "live" : razorpay.keyId ? "test" : null,
+      webhook_configured: Boolean(razorpay.webhookSecret),
+      webhook_url: `${siteUrl()}/api/webhooks/razorpay`,
+    },
+  };
 }
 
 const GSTIN_RE = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
@@ -216,12 +228,18 @@ export function toInvoice(row, items = null, payments = null, { internal = true 
     sent_at: row.sent_at,
     voided_at: row.voided_at,
     void_reason: row.void_reason,
+    payment_link_url:
+      row.status === "issued" && balance >= 1 && ["created", "partially_paid"].includes(row.payment_link_status) &&
+      round2(row.payment_link_amount) === balance
+        ? row.payment_link_url
+        : null,
   };
   if (internal) {
     Object.assign(invoice, {
       lead: row.lead_id ? { id: row.lead_id, name: row.lead_name } : null,
       created_by: row.created_by ? { id: row.created_by, name: row.created_by_name } : null,
       public_url: row.status === "draft" ? null : publicInvoiceUrl(row.public_token),
+      payment_link_status: row.payment_link_status,
       created_at: row.created_at,
       updated_at: row.updated_at,
     });

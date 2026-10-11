@@ -11,6 +11,7 @@ import userRoutes from "./routes/users.js";
 import analyticsRoutes from "./routes/analytics.js";
 import invoiceRoutes from "./routes/invoices.js";
 import publicRoutes from "./routes/public.js";
+import webhookRoutes from "./routes/webhooks.js";
 
 // One Cloudflare Worker serves the whole site. Static assets (the built React
 // app) are answered by Cloudflare before this code runs; only /api/* and
@@ -43,6 +44,7 @@ api.use(async (c, next) => {
   let body = {};
   if (!["GET", "HEAD", "OPTIONS"].includes(c.req.method) && /json/i.test(c.req.header("Content-Type") || "")) {
     const text = await c.req.text();
+    c.set("rawBody", text); // webhook signatures are computed over the exact bytes
     if (text.trim()) {
       try {
         body = JSON.parse(text);
@@ -87,6 +89,7 @@ api.route("/users", userRoutes);
 api.route("/analytics", analyticsRoutes);
 api.route("/invoices", invoiceRoutes);
 api.route("/public", publicRoutes);
+api.route("/webhooks", webhookRoutes);
 app.route("/api", api);
 
 // Unknown API paths get a JSON 404; anything else that reaches the Worker falls

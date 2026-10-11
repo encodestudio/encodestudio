@@ -54,6 +54,16 @@ export function loadConfig(env) {
       adminCc: list(env.ADMIN_EMAIL_CC, "encodestudio.in@gmail.com"),
     },
 
+    // Razorpay Payment Links. Keys come from `wrangler secret put`; invoices get a
+    // "Pay now" link only when both keys are set. RAZORPAY_API_BASE is for local mocks.
+    razorpay: {
+      keyId: env.RAZORPAY_KEY_ID || "",
+      keySecret: env.RAZORPAY_KEY_SECRET || "",
+      webhookSecret: env.RAZORPAY_WEBHOOK_SECRET || "",
+      apiBase: (env.RAZORPAY_API_BASE || "https://api.razorpay.com").replace(/\/+$/, ""),
+      enabled: Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET),
+    },
+
     // Link used in the "Open in Lead Manager" button of the admin notification.
     leadsPortalUrl: (env.LEADS_PORTAL_URL || "http://localhost:5173/leads").replace(/\/+$/, ""),
   });

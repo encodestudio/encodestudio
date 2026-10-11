@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Copy } from "lucide-react";
 import { fetchInvoiceSettings, saveInvoiceSettings } from "../../lib/leadsApi.js";
 import { usePortal } from "./PortalContext.jsx";
 import { Card, Field } from "./ui.jsx";
@@ -144,6 +144,72 @@ export default function InvoiceSettingsPage() {
           </Card>
         </div>
       </div>
+
+      <RazorpayCard razorpay={saved.razorpay} />
     </form>
+  );
+}
+
+function Step({ n, children }) {
+  return (
+    <li className="flex gap-3">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-black text-xs font-bold text-white">{n}</span>
+      <div className="min-w-0 pt-0.5">{children}</div>
+    </li>
+  );
+}
+
+const Code = ({ children }) => <code className="rounded bg-encode-soft px-1.5 py-0.5 text-[12px]">{children}</code>;
+
+/** Razorpay keys are Worker secrets (set from a terminal), so this card shows status and setup steps only. */
+function RazorpayCard({ razorpay }) {
+  const { notify } = usePortal();
+  if (!razorpay) return null;
+  const copy = (text) => navigator.clipboard?.writeText(text).then(() => notify("Copied"));
+  const status = razorpay.enabled
+    ? `Connected · ${razorpay.mode === "live" ? "Live mode" : "Test mode (no real money moves)"}`
+    : "Not connected";
+  return (
+    <Card title="Razorpay (Pay-now links)" className="mt-5">
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+        <span className={`h-2.5 w-2.5 rounded-full ${razorpay.enabled ? (razorpay.mode === "live" ? "bg-green-600" : "bg-amber-500") : "bg-encode-border"}`} />
+        <span className="font-semibold">{status}</span>
+        {razorpay.enabled && !razorpay.webhook_configured && (
+          <span className="text-encode-grey">· Webhook secret not set, so payments are recorded only when the client returns to the invoice page.</span>
+        )}
+      </div>
+      <p className="mb-4 text-sm text-encode-grey">
+        When connected, every issued invoice gets a Razorpay payment link for the amount due. It's shown in the invoice email and on
+        the client's invoice page, and payments are recorded on the invoice automatically.
+      </p>
+      <ol className="space-y-3 text-sm">
+        <Step n={1}>
+          In the Razorpay Dashboard, go to <strong>Account &amp; Settings → API Keys</strong> and generate a key (use Test mode first).
+        </Step>
+        <Step n={2}>
+          From the project folder, store the keys as secrets (paste each when asked): <Code>npx wrangler secret put RAZORPAY_KEY_ID</Code>{" "}
+          and <Code>npx wrangler secret put RAZORPAY_KEY_SECRET</Code>
+        </Step>
+        <Step n={3}>
+          <p>
+            In <strong>Account &amp; Settings → Webhooks</strong>, add a webhook with this URL, choose a secret, and tick the{" "}
+            <Code>payment_link.paid</Code>, <Code>payment_link.partially_paid</Code>, <Code>payment_link.cancelled</Code> and{" "}
+            <Code>payment_link.expired</Code> events:
+          </p>
+          <button
+            type="button"
+            onClick={() => copy(razorpay.webhook_url)}
+            className="mt-2 flex w-full items-center justify-between gap-2 rounded-xl border border-encode-border px-3 py-2 text-left text-sm hover:bg-encode-soft"
+          >
+            <span className="truncate font-mono text-[12px]">{razorpay.webhook_url}</span>
+            <Copy size={14} className="shrink-0 text-encode-grey" />
+          </button>
+        </Step>
+        <Step n={4}>
+          Store that webhook secret too: <Code>npx wrangler secret put RAZORPAY_WEBHOOK_SECRET</Code>. Secrets take effect within a
+          few seconds; reload this page to check the status.
+        </Step>
+      </ol>
+    </Card>
   );
 }
