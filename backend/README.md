@@ -55,6 +55,9 @@ Local settings and secrets live in `.dev.vars` at the repo root (gitignored). It
 | `GET` | `/api/invoices/summary/` | staff | Outstanding, overdue, received this month, invoiced this FY |
 | `GET` / `PUT` | `/api/invoices/settings/` | staff / admin | Business details, bank/UPI, numbering and defaults |
 | `GET` | `/api/public/invoices/:token` | public (token) | The client's copy of an issued invoice |
+| `POST` | `/api/invoices/:id/payment-link/`, `/payment-link/sync/` | staff | Create/refresh the Razorpay link; pull payments made on it |
+| `POST` | `/api/public/invoices/:token/razorpay-return` | public (Razorpay signature) | Confirms a payment when Razorpay redirects the client back |
+| `POST` | `/api/webhooks/razorpay` | Razorpay webhook signature | `payment_link.*` events |
 | `GET` | `/health/` | public | Health check |
 
 Contact body: `{ name, company, email, phone, interest, project_description, timeline, message }`
@@ -81,6 +84,31 @@ with business details in `invoice_settings`. The rules follow Indian GST practic
   that needs no login. Clients download a PDF through the browser's print dialog. Sending
   emails that link through the same Gmail SMTP, CC'ing `ADMIN_EMAIL`.
 - Issuing, sending, payments and voids are logged on the linked lead's timeline.
+
+### Razorpay payment links
+
+With `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` set (`npx wrangler secret put …`), each
+issued invoice that still has money owing gets a Razorpay Payment Link for exactly its
+balance (`src/razorpay.js`). The link shows as **Pay now** in the invoice email and on the
+client's invoice page. Razorpay's own SMS/email notifications are off, so the client gets
+just one email.
+
+- A link's amount can't be changed. When the balance changes (for example a manual payment
+  is recorded), the old link is cancelled and a new one is created. Its `reference_id` gets a
+  `-2`, `-3`, … suffix because Razorpay requires every reference to be unique. Voiding an
+  invoice cancels its link, and balances under ₹1 (Razorpay's minimum) get no link.
+- Payments are recorded in two ways: when Razorpay redirects the client back to
+  `/invoice/:token` (signed with the key secret), and through the webhook (signed with
+  `RAZORPAY_WEBHOOK_SECRET`). Either way, the amounts are read from Razorpay's API, never
+  from the request. Each `pay_…` id is stored once (unique index), so a payment arriving
+  both ways, or a webhook retry, is recorded only once.
+- If Razorpay is down or rejects the request, the invoice is still issued or sent without
+  a link, and the portal shows the error with a **Create payment link** button to retry.
+- Webhook: Razorpay Dashboard → Account & Settings → Webhooks → URL
+  `https://encodestudio.in/api/webhooks/razorpay`, with the events `payment_link.paid`,
+  `payment_link.partially_paid`, `payment_link.cancelled` and `payment_link.expired`.
+- `rzp_test_…` keys put the portal in test mode (badge shown); `rzp_live_…` keys take
+  real payments. `RAZORPAY_API_BASE` exists only for pointing local dev at a mock.
 
 ## Database migrations
 

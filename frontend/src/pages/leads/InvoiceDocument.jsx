@@ -95,6 +95,18 @@ export default function InvoiceDocument({ invoice, business }) {
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-black/50">Amount due</p>
             <p className="mt-1 font-display text-2xl font-bold">{formatInr(invoice.balance)}</p>
             {invoice.due_date && <p className="text-[12px] text-black/60">by {formatDay(invoice.due_date)}</p>}
+            {invoice.payment_link_url && (
+              <>
+                <a
+                  href={invoice.payment_link_url}
+                  className="mt-3 inline-flex items-center justify-center rounded-full bg-black px-5 py-2.5 text-sm font-semibold text-white hover:bg-encode-blue hover:text-black print:hidden"
+                >
+                  Pay now
+                </a>
+                <p className="mt-2 text-[11px] text-black/50 print:hidden">UPI, cards, net banking · via Razorpay</p>
+                <p className="mt-2 hidden text-[11px] text-black/60 print:block">Pay online: {invoice.payment_link_url}</p>
+              </>
+            )}
           </div>
         )}
       </section>

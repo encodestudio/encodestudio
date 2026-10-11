@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
-import { ArrowLeft, Ban, Copy, CopyPlus, Download, ExternalLink, Pencil, Send, Trash2 } from "lucide-react";
+import { ArrowLeft, Ban, Copy, CopyPlus, CreditCard, Download, ExternalLink, Pencil, RefreshCw, Send, Trash2 } from "lucide-react";
 import {
   addInvoicePayment,
+  createPaymentLink,
   deleteInvoice,
   deleteInvoicePayment,
   duplicateInvoice,
@@ -11,6 +12,7 @@ import {
   fetchInvoiceSettings,
   issueInvoice,
   sendInvoice,
+  syncPaymentLink,
   voidInvoice,
 } from "../../lib/leadsApi.js";
 import { todayInIndia } from "../../lib/invoiceMath.js";
@@ -157,10 +159,15 @@ export default function InvoiceDetailPage() {
   if (error) return <p className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">{error}</p>;
   if (!invoice || !business) return <p className="text-sm text-encode-grey">Loading...</p>;
 
+  const applyInvoice = (inv) => {
+    setInvoice(inv);
+    if (inv?.payment_link_error) notify(`Razorpay link not updated: ${inv.payment_link_error}`, "error");
+  };
+
   const issue = async () => {
     if (!window.confirm("Issue this invoice? It gets the next invoice number and can no longer be edited.")) return;
     const inv = await run(() => issueInvoice(invoice.id), (i) => `Invoice ${i.number} issued`);
-    if (inv) setInvoice(inv);
+    if (inv) applyInvoice(inv);
   };
   const remove = async () => {
     if (!window.confirm("Delete this draft?")) return;
@@ -183,9 +190,22 @@ export default function InvoiceDetailPage() {
   const removePayment = async (payment) => {
     if (!window.confirm(`Remove the ${formatInr(payment.amount)} payment from ${formatDay(payment.paid_on)}?`)) return;
     const inv = await run(() => deleteInvoicePayment(invoice.id, payment.id), "Payment removed");
-    if (inv) setInvoice(inv);
+    if (inv) applyInvoice(inv);
   };
   const copyLink = () => navigator.clipboard?.writeText(invoice.public_url).then(() => notify("Client link copied"));
+  const copyPayLink = () => navigator.clipboard?.writeText(invoice.payment_link_url).then(() => notify("Payment link copied"));
+  const makePayLink = async () => {
+    const inv = await run(() => createPaymentLink(invoice.id), "Payment link ready");
+    if (inv) setInvoice(inv);
+  };
+  const checkPayments = async () => {
+    const result = await run(
+      () => syncPaymentLink(invoice.id),
+      (r) => (r.recorded ? `${r.recorded} online payment${r.recorded > 1 ? "s" : ""} recorded` : "No new online payments"),
+    );
+    if (result) setInvoice(result.invoice);
+  };
+  const razorpay = business.razorpay || {};
 
   const issued = invoice.status === "issued";
   const actionClass = "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-black/80 hover:bg-encode-soft disabled:opacity-50";
@@ -271,6 +291,53 @@ export default function InvoiceDetailPage() {
             </p>
           </Card>
 
+          {issued && invoice.balance > 0 && (
+            <Card
+              title={
+                <span className="flex items-center gap-2">
+                  <CreditCard size={14} /> Online payment
+                  {razorpay.mode === "test" && (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">Test mode</span>
+                  )}
+                </span>
+              }
+            >
+              {!razorpay.enabled ? (
+                <p className="text-sm text-encode-grey">
+                  Connect Razorpay to add a Pay-now link to every invoice.{" "}
+                  <Link to="/leads/invoices/settings" className="font-semibold text-encode-blueDark hover:underline">
+                    Set it up
+                  </Link>
+                </p>
+              ) : invoice.payment_link_url ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 rounded-xl bg-encode-soft px-3 py-2">
+                    <a href={invoice.payment_link_url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate text-sm font-medium text-encode-blueDark hover:underline">
+                      {invoice.payment_link_url.replace(/^https?:\/\//, "")}
+                    </a>
+                    <button onClick={copyPayLink} className="text-encode-grey hover:text-black" aria-label="Copy payment link">
+                      <Copy size={14} />
+                    </button>
+                  </div>
+                  <p className="text-xs text-encode-grey">
+                    For {formatInr(invoice.balance)}. It's in the invoice email and on the client's invoice page. Payments are
+                    recorded here automatically.
+                  </p>
+                  <button onClick={checkPayments} disabled={busy} className="inline-flex items-center gap-1.5 text-xs font-semibold text-encode-blueDark hover:underline disabled:opacity-50">
+                    <RefreshCw size={12} /> Check for payments now
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-encode-grey">No payment link yet.</p>
+                  <button onClick={makePayLink} disabled={busy} className="btn-primary w-full justify-center !py-2 text-xs">
+                    Create payment link
+                  </button>
+                </div>
+              )}
+            </Card>
+          )}
+
           {issued && (
             <Card title="Payments">
               {invoice.payments.length > 0 && (
@@ -292,7 +359,7 @@ export default function InvoiceDetailPage() {
                 </ul>
               )}
               {invoice.balance > 0 ? (
-                <PaymentForm invoice={invoice} onSaved={setInvoice} />
+                <PaymentForm invoice={invoice} onSaved={applyInvoice} />
               ) : (
                 <p className="text-sm font-semibold text-green-700">Paid in full.</p>
               )}
@@ -340,7 +407,7 @@ export default function InvoiceDetailPage() {
             invoice={invoice}
             onClose={() => setSendOpen(false)}
             onSent={(inv) => {
-              setInvoice(inv);
+              applyInvoice(inv);
               setSendOpen(false);
             }}
           />

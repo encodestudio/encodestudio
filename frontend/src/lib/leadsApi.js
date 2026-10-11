@@ -184,3 +184,16 @@ export async function fetchPublicInvoice(token) {
   if (!res.ok) throw new Error(await parseError(res));
   return res.json();
 }
+export const createPaymentLink = (id) => request(`/invoices/${id}/payment-link/`, { method: "POST" });
+export const syncPaymentLink = (id) => request(`/invoices/${id}/payment-link/sync/`, { method: "POST" });
+
+/** Forwards Razorpay's signed redirect params so the payment is recorded right away. */
+export async function confirmRazorpayReturn(token, params) {
+  const res = await fetch(`${API_BASE}/public/invoices/${token}/razorpay-return`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}

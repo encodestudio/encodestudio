@@ -3,6 +3,7 @@ import { NOW, prepare, query } from "../db.js";
 import { requireStaff } from "../auth.js";
 import { logActivity } from "../leads.js";
 import { sendInvoiceEmail } from "../emails.js";
+import { cancelPaymentLink, ensurePaymentLink, syncPaymentLink } from "../razorpay.js";
 import {
   INVOICE_SELECT,
   PAYMENT_METHODS,
@@ -42,6 +43,24 @@ async function findInvoice(c) {
 }
 
 const hasErrors = (errors) => Object.keys(errors).length > 0;
+
+/**
+ * Brings the Razorpay link in line with the invoice's balance. A Razorpay
+ * failure never blocks the invoice action; the reason goes back as
+ * `payment_link_error` so the portal can show it.
+ */
+async function refreshLink(invoiceId) {
+  const row = await getInvoiceRow("i.id = ?", [invoiceId]);
+  let error = null;
+  try {
+    await ensurePaymentLink(row, await getSettings());
+  } catch (err) {
+    console.error(`Razorpay link for invoice #${invoiceId} failed`, err);
+    error = err.message;
+  }
+  const invoice = await loadInvoice(await getInvoiceRow("i.id = ?", [invoiceId]));
+  return error ? { ...invoice, payment_link_error: error } : invoice;
+}
 
 // ---- Settings -----------------------------------------------------------
 
@@ -292,7 +311,7 @@ router.post("/:id/issue", async (c) => {
       total: row.total,
     });
   }
-  return c.json(await loadInvoice(await getInvoiceRow("i.id = ?", [row.id])));
+  return c.json(await refreshLink(row.id));
 });
 
 // POST /api/invoices/:id/send — { to?, cc?, message? } emails the client a link to the invoice.
@@ -305,7 +324,7 @@ router.post("/:id/send", async (c) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return c.json({ to: ["Enter a valid email address."] }, 400);
   const message = String(body.message ?? "").slice(0, 4000);
 
-  const invoice = await loadInvoice(row);
+  const invoice = await refreshLink(row.id);
   const sent = await sendInvoiceEmail(invoice, await getSettings(), { to, message });
   if (!sent) return c.json({ detail: "The email couldn't be sent. Check the email settings and try again." }, 502);
   await query(`UPDATE invoice SET sent_at = ${NOW}, updated_at = ${NOW} WHERE id = ?`, [row.id]);
@@ -329,6 +348,11 @@ router.post("/:id/void", async (c) => {
     reason,
     row.id,
   ]);
+  try {
+    await cancelPaymentLink(row);
+  } catch (err) {
+    console.error(`Couldn't cancel the Razorpay link for invoice #${row.id}`, err);
+  }
   if (row.lead_id) {
     await logActivity(row.lead_id, c.get("user").id, "invoice_voided", `Invoice ${row.number} voided${reason ? `: ${reason}` : ""}`, {
       invoice_id: row.id,
@@ -415,7 +439,7 @@ router.post("/:id/payments", async (c) => {
       { invoice_id: row.id, number: row.number, amount },
     );
   }
-  return c.json(await loadInvoice(await getInvoiceRow("i.id = ?", [row.id])), 201);
+  return c.json(await refreshLink(row.id), 201);
 });
 
 // DELETE /api/invoices/:id/payments/:paymentId — undo a payment recorded by mistake.
@@ -428,7 +452,32 @@ router.delete("/:id/payments/:paymentId", async (c) => {
   ]);
   if (!result.affectedRows) return c.json({ detail: "Not found." }, 404);
   await refreshAmountPaid(row.id);
-  return c.json(await loadInvoice(await getInvoiceRow("i.id = ?", [row.id])));
+  return c.json(await refreshLink(row.id));
+});
+
+// ---- Razorpay ---------------------------------------------------------------------
+
+// POST /api/invoices/:id/payment-link — create (or re-create for the current balance) the Pay-now link.
+router.post("/:id/payment-link", async (c) => {
+  const row = await findInvoice(c);
+  if (!row) return c.json(NOT_FOUND, 404);
+  if (row.status !== "issued") return c.json({ detail: "Issue the invoice first." }, 400);
+  const invoice = await refreshLink(row.id);
+  if (invoice.payment_link_error) return c.json({ detail: `Razorpay: ${invoice.payment_link_error}` }, 502);
+  return c.json(invoice);
+});
+
+// POST /api/invoices/:id/payment-link/sync — ask Razorpay for payments made on the link.
+router.post("/:id/payment-link/sync", async (c) => {
+  const row = await findInvoice(c);
+  if (!row) return c.json(NOT_FOUND, 404);
+  try {
+    const recorded = await syncPaymentLink(row);
+    const invoice = recorded ? await refreshLink(row.id) : await loadInvoice(await getInvoiceRow("i.id = ?", [row.id]));
+    return c.json({ recorded, invoice });
+  } catch (err) {
+    return c.json({ detail: `Razorpay: ${err.message}` }, 502);
+  }
 });
 
 export default router;

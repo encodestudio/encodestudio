@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { getInvoiceRow, getSettings, loadInvoice } from "../invoices.js";
+import { ensurePaymentLink, syncPaymentLink, verifyCallbackSignature } from "../razorpay.js";
 
 // Unauthenticated endpoints. The 128-bit token in the URL is the only key, so
 // only what belongs on the client's copy of the invoice is returned.
@@ -34,6 +35,33 @@ router.get("/invoices/:token", async (c) => {
     invoice: await loadInvoice(row, { internal: false }),
     business: Object.fromEntries(BUSINESS_FIELDS.map((f) => [f, settings[f]])),
   });
+});
+
+// POST /api/public/invoices/:token/razorpay-return — Razorpay sends the customer back to the
+// invoice page with signed razorpay_* query params after paying; the page forwards them here.
+// The signature proves the payment happened; the amounts are then read from Razorpay itself.
+router.post("/invoices/:token/razorpay-return", async (c) => {
+  const token = c.req.param("token");
+  const row = /^[0-9a-f]{32}$/.test(token) ? await getInvoiceRow("i.public_token = ? AND i.status = 'issued'", [token]) : null;
+  if (!row) return c.json({ detail: "Invoice not found." }, 404);
+  const b = c.get("body");
+  const params = {
+    linkId: String(b.razorpay_payment_link_id || ""),
+    referenceId: String(b.razorpay_payment_link_reference_id || ""),
+    status: String(b.razorpay_payment_link_status || ""),
+    paymentId: String(b.razorpay_payment_id || ""),
+    signature: String(b.razorpay_signature || ""),
+  };
+  if (params.linkId !== row.payment_link_id || !(await verifyCallbackSignature(params))) {
+    return c.json({ detail: "Payment confirmation couldn't be verified." }, 400);
+  }
+  try {
+    if (await syncPaymentLink(row)) await ensurePaymentLink(await getInvoiceRow("i.id = ?", [row.id]), await getSettings());
+  } catch (err) {
+    // The webhook will catch up; the customer still sees their payment acknowledged.
+    console.error(`Razorpay sync after redirect failed for invoice #${row.id}`, err);
+  }
+  return c.json({ invoice: await loadInvoice(await getInvoiceRow("i.id = ?", [row.id]), { internal: false }) });
 });
 
 export default router;
