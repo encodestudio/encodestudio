@@ -1,17 +1,15 @@
-import { Router } from "express";
-import { query } from "../db.js";
+import { Hono } from "hono";
+import { NOW, now, query, userNameSql } from "../db.js";
 import { requireStaff } from "../auth.js";
 import { logActivity } from "../leads.js";
 
 // Follow-up tasks attached to leads.
-const router = Router();
+const router = new Hono({ strict: false });
 router.use(requireStaff);
 
-const NAME = (alias) =>
-  `COALESCE(NULLIF(TRIM(CONCAT(${alias}.first_name, ' ', ${alias}.last_name)), ''), ${alias}.username)`;
 const TASK_SELECT = `
   SELECT t.*, l.name AS lead_name, l.company AS lead_company, l.status AS lead_status,
-         ${NAME("a")} AS assignee_name
+         ${userNameSql("a")} AS assignee_name
   FROM lead_task t
   JOIN contact_lead l ON l.id = t.lead_id
   LEFT JOIN auth_user a ON a.id = t.assigned_to`;
@@ -54,7 +52,7 @@ async function validate(body, errors, { partial }) {
   if (body.assigned_to !== undefined) {
     if (body.assigned_to === null || body.assigned_to === "") data.assigned_to = null;
     else {
-      const rows = await query("SELECT id FROM auth_user WHERE id = ? AND is_staff = 1", [body.assigned_to]);
+      const rows = await query("SELECT id FROM auth_user WHERE id = ? AND is_staff = 1", [Number(body.assigned_to) || 0]);
       if (!rows.length) errors.assigned_to = ["Unknown team member."];
       data.assigned_to = Number(body.assigned_to);
     }
@@ -63,83 +61,85 @@ async function validate(body, errors, { partial }) {
 }
 
 // GET /api/tasks/?scope=mine|all&state=open|done&lead=<id>
-router.get("/", async (req, res) => {
+router.get("/", async (c) => {
+  const q = c.req.query();
   const where = [];
   const params = [];
-  if (req.query.lead) {
+  if (q.lead) {
     where.push("t.lead_id = ?");
-    params.push(Number(req.query.lead));
+    params.push(Number(q.lead) || 0);
   }
-  if (req.query.scope === "mine") {
+  if (q.scope === "mine") {
     where.push("t.assigned_to = ?");
-    params.push(req.user.id);
+    params.push(c.get("user").id);
   }
-  if (req.query.state === "done") where.push("t.completed_at IS NOT NULL");
-  else if (req.query.state !== "all") where.push("t.completed_at IS NULL");
+  if (q.state === "done") where.push("t.completed_at IS NOT NULL");
+  else if (q.state !== "all") where.push("t.completed_at IS NULL");
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const order =
-    req.query.state === "done" ? "t.completed_at DESC" : "t.completed_at IS NOT NULL, t.due_at IS NULL, t.due_at ASC, t.id";
+    q.state === "done" ? "t.completed_at DESC" : "t.completed_at IS NOT NULL, t.due_at IS NULL, t.due_at ASC, t.id";
   const rows = await query(`${TASK_SELECT} ${whereSql} ORDER BY ${order} LIMIT 500`, params);
-  res.json(rows.map(toTask));
+  return c.json(rows.map(toTask));
 });
 
 // GET /api/tasks/summary/ — counts for the sidebar badge (the user's own open tasks).
-router.get("/summary/", async (req, res) => {
+router.get("/summary", async (c) => {
   const [row] = await query(
     `SELECT
-       SUM(due_at < UTC_TIMESTAMP()) AS overdue,
-       SUM(due_at >= UTC_TIMESTAMP() AND due_at < UTC_TIMESTAMP() + INTERVAL 1 DAY) AS due_soon,
+       SUM(due_at < ${NOW}) AS overdue,
+       SUM(due_at >= ${NOW} AND due_at < ${now("+1 day")}) AS due_soon,
        COUNT(*) AS open
      FROM lead_task WHERE completed_at IS NULL AND assigned_to = ?`,
-    [req.user.id],
+    [c.get("user").id],
   );
-  res.json({ overdue: Number(row.overdue || 0), due_soon: Number(row.due_soon || 0), open: Number(row.open || 0) });
+  return c.json({ overdue: Number(row.overdue || 0), due_soon: Number(row.due_soon || 0), open: Number(row.open || 0) });
 });
 
 // POST /api/tasks/ — { lead_id, title, notes?, due_at?, assigned_to? }
-router.post("/", async (req, res) => {
-  const body = req.body || {};
+router.post("/", async (c) => {
+  const body = c.get("body");
+  const user = c.get("user");
   const errors = {};
   const leadRows = await query("SELECT id FROM contact_lead WHERE id = ?", [Number(body.lead_id) || 0]);
   if (!leadRows.length) errors.lead_id = ["Unknown lead."];
-  const data = await validate({ assigned_to: req.user.id, ...body }, errors, { partial: false });
-  if (Object.keys(errors).length) return res.status(400).json(errors);
+  const data = await validate({ assigned_to: user.id, ...body }, errors, { partial: false });
+  if (Object.keys(errors).length) return c.json(errors, 400);
 
   const result = await query(
     `INSERT INTO lead_task (lead_id, title, notes, due_at, assigned_to, created_by, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6))`,
-    [body.lead_id, data.title, data.notes ?? "", data.due_at ?? null, data.assigned_to ?? null, req.user.id],
+     VALUES (?, ?, ?, ?, ?, ?, ${NOW})`,
+    [leadRows[0].id, data.title, data.notes ?? "", data.due_at ?? null, data.assigned_to ?? null, user.id],
   );
-  await logActivity(body.lead_id, req.user.id, "task_created", data.title, { task_id: result.insertId, due_at: data.due_at });
-  res.status(201).json(toTask(await getTask(result.insertId)));
+  await logActivity(leadRows[0].id, user.id, "task_created", data.title, { task_id: result.insertId, due_at: data.due_at });
+  return c.json(toTask(await getTask(result.insertId)), 201);
 });
 
 // PATCH /api/tasks/:id/ — { title?, notes?, due_at?, assigned_to?, completed? }
-router.patch("/:id/", async (req, res) => {
-  const task = await getTask(req.params.id);
-  if (!task) return res.status(404).json({ detail: "Not found." });
-  const body = req.body || {};
+router.patch("/:id", async (c) => {
+  const task = await getTask(c.req.param("id"));
+  if (!task) return c.json({ detail: "Not found." }, 404);
+  const body = c.get("body");
   const errors = {};
   const data = await validate(body, errors, { partial: true });
-  if (Object.keys(errors).length) return res.status(400).json(errors);
+  if (Object.keys(errors).length) return c.json(errors, 400);
 
   const sets = Object.keys(data).map((key) => `${key} = ?`);
   const params = Object.values(data);
   if (body.completed !== undefined) {
-    sets.push(body.completed ? "completed_at = COALESCE(completed_at, UTC_TIMESTAMP(6))" : "completed_at = NULL");
+    sets.push(body.completed ? `completed_at = COALESCE(completed_at, ${NOW})` : "completed_at = NULL");
   }
   if (sets.length) await query(`UPDATE lead_task SET ${sets.join(", ")} WHERE id = ?`, [...params, task.id]);
   if (body.completed === true && !task.completed_at) {
-    await logActivity(task.lead_id, req.user.id, "task_completed", task.title, { task_id: task.id });
+    await logActivity(task.lead_id, c.get("user").id, "task_completed", task.title, { task_id: task.id });
   }
-  res.json(toTask(await getTask(task.id)));
+  return c.json(toTask(await getTask(task.id)));
 });
 
 // DELETE /api/tasks/:id/
-router.delete("/:id/", async (req, res) => {
-  const result = await query("DELETE FROM lead_task WHERE id = ?", [Number(req.params.id) || 0]);
-  if (!result.affectedRows) return res.status(404).json({ detail: "Not found." });
-  res.status(204).end();
+router.delete("/:id", async (c) => {
+  const result = await query("DELETE FROM lead_task WHERE id = ?", [Number(c.req.param("id")) || 0]);
+  if (!result.affectedRows) return c.json({ detail: "Not found." }, 404);
+  return c.body(null, 204);
 });
 
 export default router;

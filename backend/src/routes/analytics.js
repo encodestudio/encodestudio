@@ -1,16 +1,14 @@
-import { Router } from "express";
-import { query } from "../db.js";
+import { Hono } from "hono";
+import { NOW, now, query, userNameSql } from "../db.js";
 import { requireStaff } from "../auth.js";
 import { LEAD_SELECT, OPEN_STATUSES, SOURCES, STATUSES, toManage } from "../leads.js";
 
 // Dashboard analytics for the lead portal.
-const router = Router();
+const router = new Hono({ strict: false });
 router.use(requireStaff);
 
 const DAY = 86_400_000;
 const STAGES = ["new", "contacted", "qualified", "converted"];
-const NAME = (alias) =>
-  `COALESCE(NULLIF(TRIM(CONCAT(${alias}.first_name, ' ', ${alias}.last_name)), ''), ${alias}.username)`;
 
 /** Start of the bucket containing `date`, in the viewer's local time (tz = minutes east of UTC). */
 function bucketStart(date, granularity, tz) {
@@ -39,24 +37,25 @@ const countBy = (rows, key) => {
 };
 
 // GET /api/analytics/?from=<iso>&to=<iso>&tz=<minutes east of UTC>
-router.get("/", async (req, res) => {
-  const to = req.query.to ? new Date(req.query.to) : new Date();
-  let from = req.query.from ? new Date(req.query.from) : new Date(to.getTime() - 30 * DAY);
-  if (req.query.from === "all") {
+router.get("/", async (c) => {
+  const q = c.req.query();
+  const to = q.to ? new Date(q.to) : new Date();
+  let from = q.from ? new Date(q.from) : new Date(to.getTime() - 30 * DAY);
+  if (q.from === "all") {
     const [{ first }] = await query("SELECT MIN(created_at) AS first FROM contact_lead");
     from = first && to - first > 7 * DAY ? first : new Date(to.getTime() - 30 * DAY);
   }
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) {
-    return res.status(400).json({ detail: "Invalid date range." });
+    return c.json({ detail: "Invalid date range." }, 400);
   }
-  const tz = Math.max(-840, Math.min(840, Number(req.query.tz) || 0));
+  const tz = Math.max(-840, Math.min(840, Number(q.tz) || 0));
   const span = to - from;
   const granularity = span <= 92 * DAY ? "day" : span <= 400 * DAY ? "week" : "month";
 
   // Leads created in the range — small enough to aggregate in JS.
   const leads = await query(
     `SELECT l.id, l.status, l.source, l.interest, l.priority, l.owner_id, l.deal_value, l.created_at,
-            l.first_contacted_at, ${NAME("o")} AS owner_name
+            l.first_contacted_at, ${userNameSql("o")} AS owner_name
      FROM contact_lead l LEFT JOIN auth_user o ON o.id = l.owner_id
      WHERE l.created_at >= ? AND l.created_at < ?`,
     [from, to],
@@ -79,7 +78,7 @@ router.get("/", async (req, res) => {
     `SELECT COUNT(*) AS n, COALESCE(SUM(deal_value), 0) AS value FROM contact_lead WHERE status IN ('new', 'contacted', 'qualified')`,
   );
   const [tasks] = await query(
-    `SELECT SUM(due_at < UTC_TIMESTAMP()) AS overdue, COUNT(*) AS open FROM lead_task WHERE completed_at IS NULL`,
+    `SELECT SUM(due_at < ${NOW}) AS overdue, COUNT(*) AS open FROM lead_task WHERE completed_at IS NULL`,
   );
 
   // ---- KPIs
@@ -121,9 +120,10 @@ router.get("/", async (req, res) => {
   const reached = new Map(leads.map((l) => [l.id, Math.max(0, STAGES.indexOf(l.status))]));
   if (leads.length) {
     const history = await query(
-      `SELECT lead_id, JSON_UNQUOTE(JSON_EXTRACT(meta, '$.to')) AS to_status FROM lead_activity
-       WHERE type = 'status_change' AND lead_id IN (${leads.map(() => "?").join(", ")})`,
-      leads.map((l) => l.id),
+      `SELECT lead_id, json_extract(meta, '$.to') AS to_status FROM lead_activity
+       WHERE type = 'status_change'
+         AND lead_id IN (SELECT id FROM contact_lead WHERE created_at >= ? AND created_at < ?)`,
+      [from, to],
     );
     for (const { lead_id: id, to_status: status } of history) {
       reached.set(id, Math.max(reached.get(id) ?? 0, STAGES.indexOf(status)));
@@ -161,20 +161,20 @@ router.get("/", async (req, res) => {
 
   // ---- Activity feed + leads that need attention
   const recent = await query(
-    `SELECT a.id, a.type, a.body, a.meta, a.created_at, a.lead_id, l.name AS lead_name, ${NAME("u")} AS user_name
+    `SELECT a.id, a.type, a.body, a.meta, a.created_at, a.lead_id, l.name AS lead_name, ${userNameSql("u")} AS user_name
      FROM lead_activity a JOIN contact_lead l ON l.id = a.lead_id LEFT JOIN auth_user u ON u.id = a.user_id
      WHERE a.type <> 'email_sent'
      ORDER BY a.created_at DESC, a.id DESC LIMIT 12`,
   );
   const stale = await query(
-    `${LEAD_SELECT} WHERE l.status IN ('new', 'contacted', 'qualified') AND l.last_activity_at < UTC_TIMESTAMP() - INTERVAL 3 DAY
+    `${LEAD_SELECT} WHERE l.status IN ('new', 'contacted', 'qualified') AND l.last_activity_at < ${now("-3 days")}
      ORDER BY l.last_activity_at ASC LIMIT 6`,
   );
   const unassigned = await query(
     `${LEAD_SELECT} WHERE l.status = 'new' AND l.owner_id IS NULL ORDER BY l.created_at DESC LIMIT 6`,
   );
 
-  res.json({
+  return c.json({
     range: { from, to, granularity },
     kpis,
     timeseries: [...buckets.values()],

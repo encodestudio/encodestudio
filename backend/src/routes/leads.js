@@ -1,5 +1,5 @@
-import { Router } from "express";
-import { query } from "../db.js";
+import { Hono } from "hono";
+import { MAX_PARAMS, NOW, batch, chunk, fieldOrder, now, prepare, query, userNameSql } from "../db.js";
 import { requireStaff } from "../auth.js";
 import {
   CONTACT_ACTIVITY_TYPES,
@@ -8,6 +8,7 @@ import {
   PRIORITIES,
   SOURCES,
   STATUSES,
+  activityStatements,
   createLead,
   getLead,
   logActivity,
@@ -18,7 +19,7 @@ import {
 import { sendLeadAdminNotificationEmail, sendLeadConfirmationEmail, sendLeadEmails } from "../emails.js";
 
 // Staff-only lead-management API backing the /leads portal.
-const router = Router();
+const router = new Hono({ strict: false });
 router.use(requireStaff);
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -28,8 +29,8 @@ const ORDERING = {
   updated_at: "l.updated_at",
   last_activity_at: "l.last_activity_at",
   name: "l.name",
-  status: "FIELD(l.status, 'new', 'contacted', 'qualified', 'converted', 'lost')",
-  priority: "FIELD(l.priority, 'low', 'medium', 'high')",
+  status: fieldOrder("l.status", ["new", "contacted", "qualified", "converted", "lost"]),
+  priority: fieldOrder("l.priority", ["low", "medium", "high"]),
   deal_value: "l.deal_value",
 };
 const NOT_FOUND = { detail: "No Lead matches the given query." };
@@ -64,7 +65,7 @@ function buildFilters(q, user, { skipStatus = false } = {}) {
     params.push(Number(q.owner));
   }
   if (q.tag) {
-    where.push("FIND_IN_SET(?, l.tags) > 0");
+    where.push("instr(',' || l.tags || ',', ',' || ? || ',') > 0");
     params.push(String(q.tag).toLowerCase());
   }
   if (q.created_from) {
@@ -77,18 +78,19 @@ function buildFilters(q, user, { skipStatus = false } = {}) {
   }
   if (q.stale === "1") {
     // Open leads nobody has touched for 3+ days.
-    where.push(`l.status IN ('new', 'contacted', 'qualified') AND l.last_activity_at < UTC_TIMESTAMP() - INTERVAL 3 DAY`);
+    where.push(`l.status IN ('new', 'contacted', 'qualified') AND l.last_activity_at < ${now("-3 days")}`);
   }
   if (q.overdue === "1") {
     where.push(
-      `EXISTS (SELECT 1 FROM lead_task t WHERE t.lead_id = l.id AND t.completed_at IS NULL AND t.due_at < UTC_TIMESTAMP())`,
+      `EXISTS (SELECT 1 FROM lead_task t WHERE t.lead_id = l.id AND t.completed_at IS NULL AND t.due_at < ${NOW})`,
     );
   }
   if (q.search) {
-    // Every whitespace-separated term must match at least one field.
-    for (const term of String(q.search).trim().split(/\s+/).filter(Boolean)) {
+    // Every whitespace-separated term must match at least one field. Capped so
+    // the query stays under D1's limit of 100 bound parameters.
+    for (const term of String(q.search).trim().split(/\s+/).filter(Boolean).slice(0, 8)) {
       const like = `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-      where.push(`(${SEARCH_FIELDS.map((f) => `${f} LIKE ?`).join(" OR ")})`);
+      where.push(`(${SEARCH_FIELDS.map((f) => `${f} LIKE ? ESCAPE '\\'`).join(" OR ")})`);
       params.push(...SEARCH_FIELDS.map(() => like));
     }
   }
@@ -107,7 +109,9 @@ function parseId(value) {
 }
 
 async function getStaffUser(id) {
-  const rows = await query("SELECT id, username, first_name, last_name FROM auth_user WHERE id = ? AND is_staff = 1", [id]);
+  const rows = await query("SELECT id, username, first_name, last_name FROM auth_user WHERE id = ? AND is_staff = 1", [
+    Number(id) || 0,
+  ]);
   return rows[0] || null;
 }
 
@@ -156,28 +160,29 @@ async function validateCrmFields(body, errors) {
 }
 
 // GET /api/leads/?page=&page_size=&search=&status=&interest=&source=&priority=&owner=&tag=&created_from=&created_to=&stale=&overdue=&ordering=
-router.get("/", async (req, res) => {
-  const { whereSql, params } = buildFilters(req.query, req.user);
-  const pageSize = Math.min(100, Math.max(1, Number(req.query.page_size) || DEFAULT_PAGE_SIZE));
+router.get("/", async (c) => {
+  const q = c.req.query();
+  const { whereSql, params } = buildFilters(q, c.get("user"));
+  const pageSize = Math.min(100, Math.max(1, Number(q.page_size) || DEFAULT_PAGE_SIZE));
 
   const [{ count }] = await query(`SELECT COUNT(*) AS count FROM ${LEAD_TABLE} l ${whereSql}`, params);
-  const page = req.query.page ? Number(req.query.page) : 1;
+  const page = q.page ? Number(q.page) : 1;
   const lastPage = Math.max(1, Math.ceil(count / pageSize));
   if (!Number.isInteger(page) || page < 1 || page > lastPage) {
-    return res.status(404).json({ detail: "Invalid page." });
+    return c.json({ detail: "Invalid page." }, 404);
   }
 
   const rows = await query(
-    `${LEAD_SELECT} ${whereSql} ORDER BY ${orderSql(req.query.ordering)}, l.id DESC LIMIT ? OFFSET ?`,
+    `${LEAD_SELECT} ${whereSql} ORDER BY ${orderSql(q.ordering)}, l.id DESC LIMIT ? OFFSET ?`,
     [...params, pageSize, (page - 1) * pageSize],
   );
 
   const pageUrl = (n) => {
-    const url = new URL(req.originalUrl, `${req.protocol}://${req.get("host")}`);
+    const url = new URL(c.req.url);
     url.searchParams.set("page", n);
     return url.toString();
   };
-  res.json({
+  return c.json({
     count,
     next: page < lastPage ? pageUrl(page + 1) : null,
     previous: page > 1 ? pageUrl(page - 1) : null,
@@ -186,47 +191,48 @@ router.get("/", async (req, res) => {
 });
 
 // POST /api/leads/ — add a lead by hand (phone call, referral, event...).
-router.post("/", async (req, res) => {
-  const body = req.body || {};
+router.post("/", async (c) => {
+  const body = c.get("body");
+  const user = c.get("user");
   const { data, errors: contactErrors } = validateSubmission(body, { messageRequired: false });
   const errors = { ...contactErrors };
   const crm = await validateCrmFields({ source: "other", ...body }, errors);
-  if (Object.keys(errors).length) return res.status(400).json(errors);
+  if (Object.keys(errors).length) return c.json(errors, 400);
 
   const { source, status, notes, ...extra } = crm;
-  const lead = await createLead(data, { source, userId: req.user.id, extra: { ...extra, notes: notes ?? "" } });
+  const lead = await createLead(data, { source, userId: user.id, extra: { ...extra, notes: notes ?? "" } });
   if (status && status !== "new") {
     await query(`UPDATE ${LEAD_TABLE} SET status = ? WHERE id = ?`, [status, lead.id]);
   }
   if (body.send_emails === true) {
-    sendLeadEmails(lead).catch((err) => console.error("Lead email dispatch failed", err));
+    c.executionCtx.waitUntil(sendLeadEmails(lead).catch((err) => console.error("Lead email dispatch failed", err)));
   }
-  res.status(201).json(toManage(await getLead(lead.id)));
+  return c.json(toManage(await getLead(lead.id)), 201);
 });
 
 // GET /api/leads/stats/ — counts per status, for the dashboard header.
-router.get("/stats/", async (req, res) => {
+router.get("/stats", async (c) => {
   const rows = await query(`SELECT status, COUNT(*) AS n FROM ${LEAD_TABLE} GROUP BY status`);
   const stats = { total: 0, ...Object.fromEntries(Object.keys(STATUSES).map((s) => [s, 0])) };
   for (const { status, n } of rows) {
     stats.total += n;
     if (status in stats) stats[status] = n;
   }
-  res.json(stats);
+  return c.json(stats);
 });
 
 // GET /api/leads/interests/ — distinct interest values, for the filter dropdown.
-router.get("/interests/", async (req, res) => {
+router.get("/interests", async (c) => {
   const rows = await query(`SELECT DISTINCT interest FROM ${LEAD_TABLE} WHERE interest <> '' ORDER BY interest`);
-  res.json(rows.map((r) => r.interest));
+  return c.json(rows.map((r) => r.interest));
 });
 
 // GET /api/leads/tags/ — tags in use with counts.
-router.get("/tags/", async (req, res) => {
+router.get("/tags", async (c) => {
   const rows = await query(`SELECT tags FROM ${LEAD_TABLE} WHERE tags <> ''`);
   const counts = {};
   for (const { tags } of rows) for (const tag of tags.split(",")) counts[tag] = (counts[tag] || 0) + 1;
-  res.json(
+  return c.json(
     Object.entries(counts)
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .map(([tag, count]) => ({ tag, count })),
@@ -234,8 +240,8 @@ router.get("/tags/", async (req, res) => {
 });
 
 // GET /api/leads/board/ — pipeline columns (same filters as the list, minus status).
-router.get("/board/", async (req, res) => {
-  const { whereSql, params } = buildFilters(req.query, req.user, { skipStatus: true });
+router.get("/board", async (c) => {
+  const { whereSql, params } = buildFilters(c.req.query(), c.get("user"), { skipStatus: true });
   const limit = 100;
   const columns = [];
   for (const status of Object.keys(STATUSES)) {
@@ -245,20 +251,19 @@ router.get("/board/", async (req, res) => {
       [...params, status],
     );
     const rows = await query(
-      `${LEAD_SELECT} ${statusWhere} ORDER BY FIELD(l.priority, 'high', 'medium', 'low'), l.created_at DESC LIMIT ?`,
+      `${LEAD_SELECT} ${statusWhere} ORDER BY ${fieldOrder("l.priority", ["high", "medium", "low"])}, l.created_at DESC LIMIT ?`,
       [...params, status, limit],
     );
     columns.push({ status, label: STATUSES[status], count, value: Number(value), leads: rows.map(toManage) });
   }
-  res.json({ columns });
+  return c.json({ columns });
 });
 
 // GET /api/leads/export.csv — every lead matching the filters, as CSV.
-router.get("/export.csv", async (req, res) => {
-  const { whereSql, params } = buildFilters(req.query, req.user);
-  const rows = (await query(`${LEAD_SELECT} ${whereSql} ORDER BY ${orderSql(req.query.ordering)}, l.id DESC`, params)).map(
-    toManage,
-  );
+router.get("/export.csv", async (c) => {
+  const q = c.req.query();
+  const { whereSql, params } = buildFilters(q, c.get("user"));
+  const rows = (await query(`${LEAD_SELECT} ${whereSql} ORDER BY ${orderSql(q.ordering)}, l.id DESC`, params)).map(toManage);
   const columns = [
     ["id", (l) => l.id],
     ["created_at", (l) => l.created_at?.toISOString()],
@@ -293,86 +298,95 @@ router.get("/export.csv", async (req, res) => {
     "\r\n",
   );
   const stamp = new Date().toISOString().slice(0, 10);
-  res.set({
+  return c.body(`﻿${csv}`, 200, {
     "Content-Type": "text/csv; charset=utf-8",
     "Content-Disposition": `attachment; filename="encode-leads-${stamp}.csv"`,
   });
-  res.send(`﻿${csv}`);
 });
 
-// POST /api/leads/bulk/ — { ids: [..], action: status|owner|priority|add_tag|delete, value }
-router.post("/bulk/", async (req, res) => {
-  const { ids, action, value } = req.body || {};
+// POST /api/leads/bulk/ — { ids, action: status|owner|priority|add_tag|delete, value }
+router.post("/bulk", async (c) => {
+  const { ids, action, value } = c.get("body");
+  const user = c.get("user");
   const leadIds = [...new Set((Array.isArray(ids) ? ids : []).map(parseId).filter(Boolean))].slice(0, 500);
-  if (!leadIds.length) return res.status(400).json({ detail: "Select at least one lead." });
-  const placeholders = leadIds.map(() => "?").join(", ");
-  const existing = await query(`SELECT id, status, owner_id, tags FROM ${LEAD_TABLE} WHERE id IN (${placeholders})`, leadIds);
-
-  if (action === "delete") {
-    await query(`DELETE FROM ${LEAD_TABLE} WHERE id IN (${placeholders})`, leadIds);
-    return res.json({ updated: existing.length });
+  if (!leadIds.length) return c.json({ detail: "Select at least one lead." }, 400);
+  const idChunks = chunk(leadIds, MAX_PARAMS);
+  const inIds = (part) => part.map(() => "?").join(", ");
+  const existing = [];
+  for (const part of idChunks) {
+    existing.push(...(await query(`SELECT id, status, owner_id, tags FROM ${LEAD_TABLE} WHERE id IN (${inIds(part)})`, part)));
   }
 
+  if (action === "delete") {
+    await batch(idChunks.map((part) => prepare(`DELETE FROM ${LEAD_TABLE} WHERE id IN (${inIds(part)})`, part)));
+    return c.json({ updated: existing.length });
+  }
+
+  // Updates and timeline entries are batched, so a bulk edit costs a few D1
+  // round trips instead of several queries per lead.
+  const statements = [];
   const errors = {};
   const field = { status: "status", owner: "owner_id", priority: "priority" }[action];
   if (field) {
     const data = await validateCrmFields({ [field]: value }, errors);
-    if (Object.keys(errors).length) return res.status(400).json(errors);
+    if (Object.keys(errors).length) return c.json(errors, 400);
     const newValue = data[field];
     let ownerName = "nobody";
     if (field === "owner_id" && newValue) ownerName = userName(await getStaffUser(newValue));
     for (const lead of existing) {
       if (lead[field] === newValue) continue;
-      const extra = field === "status" ? ", status_changed_at = UTC_TIMESTAMP(6)" : "";
-      await query(`UPDATE ${LEAD_TABLE} SET ${field} = ?, updated_at = UTC_TIMESTAMP(6)${extra} WHERE id = ?`, [
-        newValue,
-        lead.id,
-      ]);
+      const extra = field === "status" ? `, status_changed_at = ${NOW}` : "";
+      statements.push(
+        prepare(`UPDATE ${LEAD_TABLE} SET ${field} = ?, updated_at = ${NOW}${extra} WHERE id = ?`, [newValue, lead.id]),
+      );
       if (field === "status") {
-        await logActivity(lead.id, req.user.id, "status_change", "", { from: lead.status, to: newValue });
+        statements.push(...activityStatements(lead.id, user.id, "status_change", "", { from: lead.status, to: newValue }));
       } else if (field === "owner_id") {
-        await logActivity(lead.id, req.user.id, "assignment", `Assigned to ${ownerName}`, { owner_id: newValue });
+        statements.push(
+          ...activityStatements(lead.id, user.id, "assignment", `Assigned to ${ownerName}`, { owner_id: newValue }),
+        );
       } else {
-        await logActivity(lead.id, req.user.id, "field_update", `Priority set to ${newValue}`, { fields: ["priority"] });
+        statements.push(
+          ...activityStatements(lead.id, user.id, "field_update", `Priority set to ${newValue}`, { fields: ["priority"] }),
+        );
       }
     }
-    return res.json({ updated: existing.length });
-  }
-
-  if (action === "add_tag") {
+  } else if (action === "add_tag") {
     const tag = normalizeTags(value);
-    if (!tag || tag.includes(",")) return res.status(400).json({ detail: "Enter a single tag." });
+    if (!tag || tag.includes(",")) return c.json({ detail: "Enter a single tag." }, 400);
     for (const lead of existing) {
       const tags = normalizeTags([...(lead.tags ? lead.tags.split(",") : []), tag]);
       if (tags === lead.tags) continue;
-      await query(`UPDATE ${LEAD_TABLE} SET tags = ?, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`, [tags, lead.id]);
-      await logActivity(lead.id, req.user.id, "field_update", `Tagged "${tag}"`, { fields: ["tags"] });
+      statements.push(prepare(`UPDATE ${LEAD_TABLE} SET tags = ?, updated_at = ${NOW} WHERE id = ?`, [tags, lead.id]));
+      statements.push(...activityStatements(lead.id, user.id, "field_update", `Tagged "${tag}"`, { fields: ["tags"] }));
     }
-    return res.json({ updated: existing.length });
+  } else {
+    return c.json({ detail: "Unknown bulk action." }, 400);
   }
-
-  res.status(400).json({ detail: "Unknown bulk action." });
+  for (const part of chunk(statements, 150)) await batch(part);
+  return c.json({ updated: existing.length });
 });
 
 // GET /api/leads/:id/
-router.get("/:id/", async (req, res) => {
-  const id = parseId(req.params.id);
+router.get("/:id", async (c) => {
+  const id = parseId(c.req.param("id"));
   const lead = id && (await getLead(id));
-  if (!lead) return res.status(404).json(NOT_FOUND);
-  res.json(toManage(lead));
+  if (!lead) return c.json(NOT_FOUND, 404);
+  return c.json(toManage(lead));
 });
 
 // PATCH|PUT /api/leads/:id/ — every change is recorded on the lead's timeline.
-async function updateLead(req, res) {
-  const id = parseId(req.params.id);
+async function updateLead(c) {
+  const id = parseId(c.req.param("id"));
   const lead = id && (await getLead(id));
-  if (!lead) return res.status(404).json(NOT_FOUND);
-  const body = req.body || {};
+  if (!lead) return c.json(NOT_FOUND, 404);
+  const body = c.get("body");
+  const user = c.get("user");
 
   const { data: contact, errors: contactErrors } = validateSubmission(body, { partial: true });
   const errors = { ...contactErrors };
   const crm = await validateCrmFields(body, errors);
-  if (Object.keys(errors).length) return res.status(400).json(errors);
+  if (Object.keys(errors).length) return c.json(errors, 400);
 
   const changes = Object.fromEntries(
     Object.entries({ ...contact, ...crm }).filter(([key, value]) => {
@@ -383,58 +397,65 @@ async function updateLead(req, res) {
   if (Object.keys(changes).length) {
     const sets = Object.keys(changes).map((key) => `${key} = ?`);
     if ("status" in changes) {
-      sets.push("status_changed_at = UTC_TIMESTAMP(6)");
-      if (lead.status === "new") sets.push("first_contacted_at = COALESCE(first_contacted_at, UTC_TIMESTAMP(6))");
+      sets.push(`status_changed_at = ${NOW}`);
+      if (lead.status === "new") sets.push(`first_contacted_at = COALESCE(first_contacted_at, ${NOW})`);
     }
-    await query(`UPDATE ${LEAD_TABLE} SET ${sets.join(", ")}, updated_at = UTC_TIMESTAMP(6) WHERE id = ?`, [
-      ...Object.values(changes),
-      id,
-    ]);
+    const statements = [
+      prepare(`UPDATE ${LEAD_TABLE} SET ${sets.join(", ")}, updated_at = ${NOW} WHERE id = ?`, [
+        ...Object.values(changes),
+        id,
+      ]),
+    ];
 
     const { status, owner_id: ownerId, notes, ...rest } = changes;
     if (status !== undefined) {
       const reason = status === "lost" && changes.lost_reason ? changes.lost_reason : "";
-      await logActivity(id, req.user.id, "status_change", reason, { from: lead.status, to: status });
+      statements.push(...activityStatements(id, user.id, "status_change", reason, { from: lead.status, to: status }));
       delete rest.lost_reason;
     }
     if (ownerId !== undefined) {
       const owner = ownerId ? await getStaffUser(ownerId) : null;
-      await logActivity(id, req.user.id, "assignment", `Assigned to ${owner ? userName(owner) : "nobody"}`, {
-        owner_id: ownerId,
-      });
+      statements.push(
+        ...activityStatements(id, user.id, "assignment", `Assigned to ${owner ? userName(owner) : "nobody"}`, {
+          owner_id: ownerId,
+        }),
+      );
     }
     if (notes !== undefined) {
-      await logActivity(id, req.user.id, "field_update", "Updated the lead summary", { fields: ["notes"] });
+      statements.push(...activityStatements(id, user.id, "field_update", "Updated the lead summary", { fields: ["notes"] }));
     }
     const fields = Object.keys(rest);
     if (fields.length) {
-      await logActivity(id, req.user.id, "field_update", `Updated ${fields.join(", ").replace(/_/g, " ")}`, { fields });
+      statements.push(
+        ...activityStatements(id, user.id, "field_update", `Updated ${fields.join(", ").replace(/_/g, " ")}`, { fields }),
+      );
     }
+    await batch(statements);
   }
-  res.json(toManage(await getLead(id)));
+  return c.json(toManage(await getLead(id)));
 }
-router.patch("/:id/", updateLead);
-router.put("/:id/", updateLead);
+router.patch("/:id", updateLead);
+router.put("/:id", updateLead);
 
 // DELETE /api/leads/:id/
-router.delete("/:id/", async (req, res) => {
-  const id = parseId(req.params.id);
+router.delete("/:id", async (c) => {
+  const id = parseId(c.req.param("id"));
   const result = id ? await query(`DELETE FROM ${LEAD_TABLE} WHERE id = ?`, [id]) : { affectedRows: 0 };
-  if (!result.affectedRows) return res.status(404).json(NOT_FOUND);
-  res.status(204).end();
+  if (!result.affectedRows) return c.json(NOT_FOUND, 404);
+  return c.body(null, 204);
 });
 
 // GET /api/leads/:id/activities/ — the lead's timeline, newest first.
-router.get("/:id/activities/", async (req, res) => {
-  const id = parseId(req.params.id);
-  if (!id || !(await getLead(id))) return res.status(404).json(NOT_FOUND);
+router.get("/:id/activities", async (c) => {
+  const id = parseId(c.req.param("id"));
+  if (!id || !(await getLead(id))) return c.json(NOT_FOUND, 404);
   const rows = await query(
-    `SELECT a.*, COALESCE(NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''), u.username) AS user_name
+    `SELECT a.*, ${userNameSql("u")} AS user_name
      FROM lead_activity a LEFT JOIN auth_user u ON u.id = a.user_id
      WHERE a.lead_id = ? ORDER BY a.created_at DESC, a.id DESC`,
     [id],
   );
-  res.json(
+  return c.json(
     rows.map((a) => ({
       id: a.id,
       type: a.type,
@@ -447,57 +468,58 @@ router.get("/:id/activities/", async (req, res) => {
 });
 
 // POST /api/leads/:id/activities/ — log a note, call, email or meeting.
-router.post("/:id/activities/", async (req, res) => {
-  const id = parseId(req.params.id);
-  if (!id || !(await getLead(id))) return res.status(404).json(NOT_FOUND);
-  const type = req.body?.type || "note";
-  const body = String(req.body?.body ?? "").trim();
-  if (!MANUAL_ACTIVITY_TYPES.includes(type)) return res.status(400).json({ type: [`"${type}" is not a valid choice.`] });
-  if (!body) return res.status(400).json({ body: ["This field may not be blank."] });
-  if (body.length > 10000) return res.status(400).json({ body: ["That note is too long."] });
-  await logActivity(id, req.user.id, type, body);
-  res.status(201).json({ ok: true });
+router.post("/:id/activities", async (c) => {
+  const id = parseId(c.req.param("id"));
+  if (!id || !(await getLead(id))) return c.json(NOT_FOUND, 404);
+  const type = c.get("body").type || "note";
+  const body = String(c.get("body").body ?? "").trim();
+  if (!MANUAL_ACTIVITY_TYPES.includes(type)) return c.json({ type: [`"${type}" is not a valid choice.`] }, 400);
+  if (!body) return c.json({ body: ["This field may not be blank."] }, 400);
+  if (body.length > 10000) return c.json({ body: ["That note is too long."] }, 400);
+  await logActivity(id, c.get("user").id, type, body);
+  return c.json({ ok: true }, 201);
 });
 
 // DELETE /api/leads/:id/activities/:activityId/ — authors (or superusers) can remove their own entries.
-router.delete("/:id/activities/:activityId/", async (req, res) => {
+router.delete("/:id/activities/:activityId", async (c) => {
+  const user = c.get("user");
   const rows = await query("SELECT * FROM lead_activity WHERE id = ? AND lead_id = ?", [
-    parseId(req.params.activityId),
-    parseId(req.params.id),
+    parseId(c.req.param("activityId")),
+    parseId(c.req.param("id")),
   ]);
   const activity = rows[0];
-  if (!activity) return res.status(404).json({ detail: "Not found." });
+  if (!activity) return c.json({ detail: "Not found." }, 404);
   if (!MANUAL_ACTIVITY_TYPES.includes(activity.type)) {
-    return res.status(400).json({ detail: "System entries can't be deleted." });
+    return c.json({ detail: "System entries can't be deleted." }, 400);
   }
-  if (activity.user_id !== req.user.id && !req.user.is_superuser) {
-    return res.status(403).json({ detail: "You can only delete your own entries." });
+  if (activity.user_id !== user.id && !user.is_superuser) {
+    return c.json({ detail: "You can only delete your own entries." }, 403);
   }
   await query("DELETE FROM lead_activity WHERE id = ?", [activity.id]);
-  res.status(204).end();
+  return c.body(null, 204);
 });
 
 // GET /api/leads/:id/related/ — other leads from the same person (email or phone).
-router.get("/:id/related/", async (req, res) => {
-  const id = parseId(req.params.id);
+router.get("/:id/related", async (c) => {
+  const id = parseId(c.req.param("id"));
   const lead = id && (await getLead(id));
-  if (!lead) return res.status(404).json(NOT_FOUND);
+  if (!lead) return c.json(NOT_FOUND, 404);
   const rows = await query(
     `${LEAD_SELECT} WHERE l.id <> ? AND (l.email = ? OR (? <> '' AND l.phone = ?)) ORDER BY l.created_at DESC LIMIT 20`,
     [id, lead.email, lead.phone, lead.phone],
   );
-  res.json(rows.map(toManage));
+  return c.json(rows.map(toManage));
 });
 
 // POST /api/leads/:id/resend_emails/ — retry both emails, e.g. after an SMTP outage.
-router.post("/:id/resend_emails/", async (req, res) => {
-  const id = parseId(req.params.id);
+router.post("/:id/resend_emails", async (c) => {
+  const id = parseId(c.req.param("id"));
   const lead = id && (await getLead(id));
-  if (!lead) return res.status(404).json(NOT_FOUND);
+  if (!lead) return c.json(NOT_FOUND, 404);
 
   const confirmationSent = await sendLeadConfirmationEmail(lead);
   const adminNotificationSent = await sendLeadAdminNotificationEmail(lead);
-  res.json({
+  return c.json({
     confirmation_sent: confirmationSent,
     admin_notification_sent: adminNotificationSent,
     lead: toManage(await getLead(id)),

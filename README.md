@@ -1,29 +1,29 @@
 # Encode Studio Website
 
-Marketing website for Encode Studio: a React frontend, a Node.js (Express) backend, and
-a MySQL database. In production it runs as **one Node app** that serves both the site and
-the API, so it fits on any low-cost Node host. No AWS needed.
+Marketing website for Encode Studio: a React frontend plus an API and database. Everything
+runs on **Cloudflare's free plan** as one Worker: it serves the built site from the CDN and
+runs the `/api` routes on Hono with a D1 (SQLite) database.
 
 ```
 encodestudio/
-├── frontend/   React + Vite + Tailwind CSS + Framer Motion
-├── backend/    Node.js + Express + MySQL (mysql2), Nodemailer
-└── package.json  root build/start scripts used by hosts
+├── frontend/       React + Vite + Tailwind CSS + Framer Motion
+├── backend/        Cloudflare Worker: Hono, D1, worker-mailer (Gmail SMTP)
+├── wrangler.jsonc  Worker config: static assets, D1 binding, vars, domains
+└── package.json    root scripts (setup, dev, build, deploy, db, staff)
 ```
 
 ## Local development
 
 ```bash
-# 1. API on :8000 (reads backend/.env — DB credentials as before)
-cd backend && npm install && npm run dev
-
-# 2. Site on :5173, proxies /api to :8000
-cd frontend && npm install && npm run dev
+npm run setup               # install everything
+npm run build               # build frontend/dist
+npm run db:migrate:local    # local D1 database
+npm run staff -- add <username> --superuser
+npm run dev                 # site + API on http://localhost:8000
+npm run dev:frontend        # optional: Vite hot reload on :5173 (proxies /api to :8000)
 ```
 
-First time with an empty database: `npm run db:init` then
-`npm run staff -- add <username> --superuser` in `backend/`. See
-[`backend/README.md`](backend/README.md).
+See [`backend/README.md`](backend/README.md) for the API, migrations and staff accounts.
 
 ## Pages
 
@@ -34,7 +34,7 @@ pages · Meet the Founder · Contact. Per-route SEO meta and schema come from
 ## Contact form and lead manager
 
 - `/contact` posts to `POST /api/contact/`. It validates the input, has a honeypot and a
-  rate limit, stores the lead in MySQL, and emails both the visitor and the team.
+  rate limit, stores the lead in D1, and emails both the visitor and the team.
 - `/leads` is a staff-only CRM (JWT login, not linked from the site, loaded only when visited):
   - **Dashboard**: KPIs with period-over-period change, leads-over-time trend, conversion funnel,
     breakdowns by stage, source, interest and priority, an arrival heatmap, team performance,
@@ -49,30 +49,28 @@ pages · Meet the Founder · Contact. Per-route SEO meta and schema come from
   - **Team**: admins add, edit and deactivate staff; everyone can change their own password.
   - Phone and walk-in leads can be added by hand. Notification emails link straight to the lead.
 
-## Production build & deploy
+## Deploy (Cloudflare)
 
-From the repo root:
+One-time setup:
 
 ```bash
-npm run build   # installs + builds frontend/dist, installs backend prod deps
-npm start       # node backend/src/server.js on $PORT
+npx wrangler login                          # opens the browser to authorize Wrangler
+npx wrangler d1 create encodestudio         # paste the database_id into wrangler.jsonc
+npm run db:migrate                          # create the tables in production D1
+npx wrangler secret put JWT_SECRET
+npx wrangler secret put EMAIL_HOST_PASSWORD
+npm run staff -- add <username> --superuser --remote
 ```
 
-Set these on the host: `NODE_ENV=production`, `JWT_SECRET`, the `DB_*` variables,
-SMTP `EMAIL_*`, and `LEADS_PORTAL_URL=https://encodestudio.in/leads`. (If `backend/.env`
-is uploaded, it is read too. Real environment variables win.)
+Every deploy after that:
 
-Any host that runs `npm run build` + `npm start` works. Low-cost options:
+```bash
+npm run deploy      # builds the frontend and uploads the Worker + assets
+npm run logs        # live production logs
+```
 
-- **Shared/cloud hosting with Node.js + MySQL** (e.g. cPanel or hPanel "Node.js app"):
-  the cheapest all-in-one choice. MySQL runs on the same plan. Point the app's startup
-  file at `backend/src/server.js`.
-- **A small VPS** (Hetzner, DigitalOcean, Oracle Cloud's Always Free tier, …): run MySQL
-  and the app with `pm2` or systemd behind Caddy/nginx. Full control, flat monthly price.
-- **Render / Railway** for the Node app, plus a MySQL database hosted elsewhere
-  (`DB_SSL=True`). Render's free web tier sleeps when idle.
-
-Keep the domain on Cloudflare (DNS + free SSL/CDN) and point `encodestudio.in` at the host.
+`encodestudio.in` and `www` are attached as Worker custom domains (the `routes` block in
+`wrangler.jsonc`). Cloudflare creates their DNS records and certificates.
 
 ## Brand system
 

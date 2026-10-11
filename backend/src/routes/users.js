@@ -1,14 +1,14 @@
-import { Router } from "express";
-import { query } from "../db.js";
+import { Hono } from "hono";
+import { NOW, query } from "../db.js";
 import { USER_TABLE, displayName, hashPassword, requireStaff } from "../auth.js";
 
 // Team members (lead-portal staff accounts).
-const router = Router();
+const router = new Hono({ strict: false });
 router.use(requireStaff);
 
-function requireSuperuser(req, res, next) {
-  if (!req.user.is_superuser) return res.status(403).json({ detail: "Only admins can manage the team." });
-  next();
+async function requireSuperuser(c, next) {
+  if (!c.get("user").is_superuser) return c.json({ detail: "Only admins can manage the team." }, 403);
+  await next();
 }
 
 const toUser = (u) => ({
@@ -63,24 +63,24 @@ function validate(body, errors, { creating }) {
 }
 
 // GET /api/users/ — everyone on the team (used for owner/assignee pickers).
-router.get("/", async (req, res) => {
+router.get("/", async (c) => {
   const rows = await query(`${USER_SELECT} WHERE u.is_staff = 1 ORDER BY u.is_active DESC, u.first_name, u.username`);
-  res.json(rows.map(toUser));
+  return c.json(rows.map(toUser));
 });
 
 // POST /api/users/ — admins only.
-router.post("/", requireSuperuser, async (req, res) => {
+router.post("/", requireSuperuser, async (c) => {
   const errors = {};
-  const data = validate(req.body || {}, errors, { creating: true });
+  const data = validate(c.get("body"), errors, { creating: true });
   if (!errors.username && (await query(`SELECT id FROM ${USER_TABLE} WHERE username = ?`, [data.username])).length) {
     errors.username = ["A user with that username already exists."];
   }
-  if (Object.keys(errors).length) return res.status(400).json(errors);
+  if (Object.keys(errors).length) return c.json(errors, 400);
 
   const result = await query(
     `INSERT INTO ${USER_TABLE}
        (password, is_superuser, username, first_name, last_name, email, is_staff, is_active, date_joined)
-     VALUES (?, ?, ?, ?, ?, ?, 1, 1, UTC_TIMESTAMP(6))`,
+     VALUES (?, ?, ?, ?, ?, ?, 1, 1, ${NOW})`,
     [
       await hashPassword(data.password),
       data.is_superuser ?? 0,
@@ -90,27 +90,28 @@ router.post("/", requireSuperuser, async (req, res) => {
       data.email ?? "",
     ],
   );
-  res.status(201).json(toUser(await getUser(result.insertId)));
+  return c.json(toUser(await getUser(result.insertId)), 201);
 });
 
 // PATCH /api/users/:id/ — admins can edit anyone; everyone can edit their own name/email/password.
-router.patch("/:id/", async (req, res) => {
-  const user = await getUser(req.params.id);
-  if (!user) return res.status(404).json({ detail: "Not found." });
-  const isSelf = user.id === req.user.id;
-  if (!isSelf && !req.user.is_superuser) return res.status(403).json({ detail: "Only admins can manage the team." });
+router.patch("/:id", async (c) => {
+  const me = c.get("user");
+  const user = await getUser(c.req.param("id"));
+  if (!user) return c.json({ detail: "Not found." }, 404);
+  const isSelf = user.id === me.id;
+  if (!isSelf && !me.is_superuser) return c.json({ detail: "Only admins can manage the team." }, 403);
 
-  const body = { ...(req.body || {}) };
-  if (!req.user.is_superuser) {
+  const body = { ...c.get("body") };
+  if (!me.is_superuser) {
     delete body.is_superuser;
     delete body.is_active;
   }
   if (isSelf && (body.is_active === false || body.is_superuser === false)) {
-    return res.status(400).json({ detail: "You can't deactivate or demote your own account." });
+    return c.json({ detail: "You can't deactivate or demote your own account." }, 400);
   }
   const errors = {};
   const data = validate(body, errors, { creating: false });
-  if (Object.keys(errors).length) return res.status(400).json(errors);
+  if (Object.keys(errors).length) return c.json(errors, 400);
   if (data.password) data.password = await hashPassword(data.password);
 
   if (Object.keys(data).length) {
@@ -119,7 +120,7 @@ router.patch("/:id/", async (req, res) => {
       user.id,
     ]);
   }
-  res.json(toUser(await getUser(user.id)));
+  return c.json(toUser(await getUser(user.id)));
 });
 
 export default router;

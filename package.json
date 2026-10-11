@@ -1,16 +1,23 @@
 {
   "name": "encodestudio",
   "private": true,
-  "description": "Encode Studio website — React frontend + Node.js/Express API + MySQL, deployed as one Node app",
+  "description": "Encode Studio website — React frontend + API on one Cloudflare Worker (Hono + D1)",
   "engines": {
     "node": ">=20.12"
   },
   "scripts": {
-    "build": "npm install --prefix frontend --include=dev && npm run build --prefix frontend && npm install --prefix backend --omit=dev",
-    "start": "npm start --prefix backend",
-    "dev:backend": "npm run dev --prefix backend",
+    "setup": "npm install && npm install --prefix backend && npm install --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "dev": "wrangler dev",
     "dev:frontend": "npm run dev --prefix frontend",
-    "db:init": "npm run db:init --prefix backend",
-    "staff": "npm run staff --prefix backend --"
+    "deploy": "npm run build && wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply DB --remote",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "staff": "npm run staff --prefix backend --",
+    "export-mysql": "npm run export-mysql --prefix backend --",
+    "logs": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.149.0"
   }
 }

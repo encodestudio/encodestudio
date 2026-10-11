@@ -5,7 +5,7 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   server: {
-    // Forward API calls to the Node backend (`npm run dev` in /backend).
+    // Forward API calls to the Worker (`npm run dev` at the repo root, port 8000).
     proxy: {
       '/api': 'http://localhost:8000',
     },
